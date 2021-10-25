@@ -37,8 +37,8 @@ def download(url: str, file_name: str):
         os.makedirs(download_path)  # create folder if it does not exist
 
     # Get the image index.
-    page_url = __split_on_last_pattern(url, '.')[0]
-    index = __format_url_index(__get_url_index(page_url))
+    page_url = __split_on_last_pattern(url, '.')[0]  # Remove the extension from the file url.
+    index = __format_url_index(__get_url_index(page_url))  # Convert to the integer index.
     stored_name = index + '-' + file_name
 
     # Set the download target.
@@ -108,16 +108,23 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             # Retrieve something like:
             # [<a href="javascript:;">FileName : seller.jpg</a>,
             # <a href="javascript:;">ViewCount : 23</a>, ...]
-            # TODO: Retrieve and print ViewCount
             url = target_tag['href']  # url of the file to download
             try:
                 # TODO: Format to 'source-count-filename'
-                name = dropdown_menus[0].contents[0].replace('FileName : ', '').strip().replace(" ", "_")
+                # Split at ' : ' rather than remove 'FileName : ' not to be dependent on browser language.
+                # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
+                name = dropdown_menus[0].contents[0].split(' : ')[-1].strip().replace(" ", "_")
+                count_str = dropdown_menus[3].contents[0].split(' : ')[-1].strip()
+                count_digits = ""
+                for char in count_str:
+                    if char.isdigit():
+                        count_digits += char
+                storing_name = '%02d-%s' % (int(count_digits), name)
             except Exception as e:
                 # domain.com/image.jpg -> domain.com/image -> image
-                name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
-                log('Error: Cannot retrieve the file name.(%s)' + str(e))
-            return [url, name]
+                storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
+                log('Error: Cannot retrieve the file data.(%s)' % str(e))
+            return [url, storing_name]
 
 
 def upload_image() -> str:
