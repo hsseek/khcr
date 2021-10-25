@@ -37,7 +37,8 @@ def download(url: str, file_name: str):
         os.makedirs(download_path)  # create folder if it does not exist
 
     # Get the image index.
-    index = url.split('/')[-1].split('.')[0]
+    page_url = __split_on_last_pattern(url, '.')[0]
+    index = __format_url_index(__get_url_index(page_url))
     stored_name = index + '-' + file_name
 
     # Set the download target.
@@ -59,7 +60,7 @@ def download(url: str, file_name: str):
 def backup(file_path: str):
     try:
         backup_path = Path.BACKUP_PATH
-        copied_file_name = file_path.split('/')[-1]
+        copied_file_name = file_path.split('/')[-1].split('-')[-1]  # path/index-filename.png -> filename.png
         copied_file_extension = copied_file_name.split('.')[-1]
         # Force the extension to jpg
         if copied_file_extension != 'jpg':
@@ -84,7 +85,7 @@ class Path:
     LOG_PATH = read_from_file('LOG_PATH.pv')
 
 
-def get_elapsed_time(start_time):
+def __get_elapsed_time(start_time):
     end_time = datetime.datetime.now()
     return (end_time - start_time).total_seconds()
 
@@ -114,7 +115,7 @@ def extract_download_target(soup: BeautifulSoup) -> []:
                 name = dropdown_menus[0].contents[0].replace('FileName : ', '').strip().replace(" ", "_")
             except Exception as e:
                 # domain.com/image.jpg -> domain.com/image -> image
-                name = split_on_last_pattern(url, '.')[0].split('/')[-1]
+                name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
                 log('Error: Cannot retrieve the file name.(%s)' + str(e))
             return [url, name]
 
@@ -145,32 +146,46 @@ def upload_image() -> str:
     wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'img-responsive')))
 
     image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
-    uploaded_url = split_on_last_pattern(image_url, '.')[0]  # domain.com/name
+    uploaded_url = __split_on_last_pattern(image_url, '.')[0]  # domain.com/name
     log(file_to_upload + ' uploaded on ' + uploaded_url)
     return uploaded_url
 
 
-def split_on_last_pattern(string: str, pattern: str) -> []:
+# Split on the pattern, but always returning a list with length of 2.
+def __split_on_last_pattern(string: str, pattern: str) -> []:
     last_piece = string.split(pattern)[-1]  # domain.com/image.jpg -> jpg
     leading_chunks = string.split(pattern)[:-1]  # [domain, com/image]
     leading_piece = pattern.join(leading_chunks)  # domain.com/image
     return [leading_piece, last_piece]  # [domain.com/image, jpg]
 
 
-def get_next_url(url: str) -> str:
-    url_index = []
-    url_root = split_on_last_pattern(url, '/')[0] + '/'  # 'https://domain.com/' from 'https://domain.com/a3Fx'
-    str_index = split_on_last_pattern(url, '/')[-1]  # 'a3Fx' from 'https://domain.com/a3Fx'
-
+def __get_url_index(url: str) -> []:
+    url_index = []  # for example, url_index = [3, 5, 1, 9] (a list of int)
+    str_index = __split_on_last_pattern(url, '/')[-1]  # 'a3Fx' from 'https://domain.com/a3Fx'
     with open('SEQUENCE.pv', 'r') as file:
         sequence = file.read().split('\n')
 
-    for char in str_index:
+    for char in str_index:  # a -> 3 -> F -> x
         for n, candidates in enumerate(sequence):
             if char == candidates:
-                url_index.append(n)
+                url_index.append(n)  # Found the matching index
                 break
-    # for example, url_index = [3, 5, 1, 9] (a list of int)
+    return url_index
+
+
+def __format_url_index(url_index: []) -> str:
+    formatted_index = ''
+    for index in url_index:
+        formatted_index += '%02d' % index
+    return formatted_index
+
+
+def get_next_url(url: str) -> str:
+    url_index = __get_url_index(url)
+    url_root = __split_on_last_pattern(url, '/')[0] + '/'  # 'https://domain.com/' from 'https://domain.com/a3Fx'
+
+    with open('SEQUENCE.pv', 'r') as file:
+        sequence = file.read().split('\n')
 
     if url_index[-1] != len(sequence) - 1:  # The last index is not '9'.
         url_index[-1] += 1
@@ -235,7 +250,7 @@ while True:
                 else:  # Move to the next target.
                     url_to_scan = get_next_url(url_to_scan)
 
-            elapsed_time = get_elapsed_time(scan_start_time)
+            elapsed_time = __get_elapsed_time(scan_start_time)
             time_left = SCANNING_TIME_SPAN - elapsed_time
             # Implement jitter.
             if time_left > 0:
