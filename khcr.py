@@ -13,12 +13,11 @@ from shutil import copyfile
 import glob
 
 # Regarding scanning
-# TODO: Store it to another path (To prevent causing confusion with other files.)
 MAX_SCANNING_URL_SPAN = 5
 MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
 MIN_PAUSE = 1.5
-MAX_PAUSE = 4.5
+MAX_PAUSE = 3.5
 
 
 def log(message: str):
@@ -67,7 +66,7 @@ def backup(file_path: str):
         # Force the extension to jpg
         if copied_file_extension != 'jpg':
             copied_file_name = copied_file_name.split('.')[0] + '.jpg'
-        log('%s to %s' % (file_path, backup_path + copied_file_name))
+        log('Backed up to %s' % (backup_path + copied_file_name))
 
         # Remove the previous file(s) and copy the new file.
         previous_files = glob.glob(Path.BACKUP_PATH + '*')
@@ -112,7 +111,6 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             # <a href="javascript:;">ViewCount : 23</a>, ...]
             url = target_tag['href']  # url of the file to download
             try:
-                # TODO: Format to 'source-count-filename'
                 # Split at ' : ' rather than remove 'FileName : ' not to be dependent on browser language.
                 # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
                 name = dropdown_menus[0].contents[0].split(' : ')[-1].strip().replace(" ", "_")
@@ -169,7 +167,7 @@ def __split_on_last_pattern(string: str, pattern: str) -> []:
 
 
 def __get_url_index(url: str) -> []:
-    url_index = []  # for example, url_index = [3, 5, 1, 9] (a list of int)
+    url_indices = []  # for example, url_indices = [3, 5, 1, 9] (a list of int)
     str_index = __split_on_last_pattern(url, '/')[-1]  # 'a3Fx' from 'https://domain.com/a3Fx'
     with open('SEQUENCE.pv', 'r') as file:
         sequence = file.read().split('\n')
@@ -177,14 +175,14 @@ def __get_url_index(url: str) -> []:
     for char in str_index:  # a -> 3 -> F -> x
         for n, candidates in enumerate(sequence):
             if char == candidates:
-                url_index.append(n)  # Found the matching index
+                url_indices.append(n)  # Found the matching index
                 break
-    return url_index
+    return url_indices
 
 
-def __format_url_index(url_index: []) -> str:
+def __format_url_index(url_indices: []) -> str:
     formatted_index = ''
-    for index in url_index:
+    for index in url_indices:
         formatted_index += '%02d' % index
     return formatted_index
 
@@ -212,7 +210,7 @@ def get_next_url(url: str) -> str:
                     url_index[-4] += 1
                 else:
                     url_index[-4] = 0  # 0000
-                    # TODO: Behavior not known. Notify.
+                    # Behavior not known. May happen in years.
     # url_index shift by 1, so that [3, 5, 2, 0]
 
     for index in url_index:
