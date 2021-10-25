@@ -19,20 +19,30 @@ MIN_SCANNING_URL_SPAN = 4
 SCANNING_TIME_SPAN = 1.5  # seconds
 
 
+def log(message: str):
+    with open(Path.LOG_PATH, 'a') as f:
+        f.write(message + '\n')
+    print(message)
+
+
 def read_from_file(path: str):
     with open(path) as f:
         return f.read().strip('\n')
 
 
-def download(url: str, output_name: str):
+def download(url: str, file_name: str):
     # Set the absolute path to store the downloaded file.
     download_path = Path.DOWNLOAD_PATH
     if not os.path.exists(download_path):
         os.makedirs(download_path)  # create folder if it does not exist
 
+    # Get the image index.
+    index = url.split('/')[-1].split('.')[0]
+    stored_name = index + '-' + file_name
+
     # Set the download target.
     r = requests.get(url, stream=True)
-    file_path = os.path.join(download_path, output_name)
+    file_path = os.path.join(download_path, stored_name)
     if r.ok:
         with open(file_path, 'wb') as f:
             for chunk in r.iter_content(chunk_size=1024 * 8):
@@ -41,9 +51,9 @@ def download(url: str, output_name: str):
                     f.flush()
                     os.fsync(f.fileno())
         backup(file_path)
-        print("Stored to", os.path.abspath(file_path))
+        log("Stored to " + str(os.path.abspath(file_path)))
     else:  # HTTP status code 4XX/5XX
-        print("Download failed: status code {}\n{}".format(r.status_code, r.text))
+        log("Download failed: status code {}\n{}".format(r.status_code, r.text))
 
 
 def backup(file_path: str):
@@ -54,7 +64,7 @@ def backup(file_path: str):
         # Force the extension to jpg
         if copied_file_extension != 'jpg':
             copied_file_name = copied_file_name.split('.')[0] + '.jpg'
-        print('%s to %s' % (file_path, backup_path + copied_file_name))
+        log('%s to %s' % (file_path, backup_path + copied_file_name))
 
         # Remove the previous file(s) and copy the new file.
         previous_files = glob.glob(Path.BACKUP_PATH + '*')
@@ -62,7 +72,7 @@ def backup(file_path: str):
             os.remove(file)
         copyfile(file_path, backup_path + copied_file_name)
     except Exception as e:
-        print('Backup went wrong. Do not change the record.\nError: ' + str(e))
+        log('Backup went wrong. Do not change the record.\nError: ' + str(e))
 
 
 class Path:
@@ -71,7 +81,7 @@ class Path:
     ROOT_DOMAIN = read_from_file('ROOT_DOMAIN.pv')
     DOWNLOAD_PATH = read_from_file('DOWNLOAD_PATH.pv')
     BACKUP_PATH = read_from_file('BACKUP_PATH.pv')
-    LOG_FILE_NAME = 'log'
+    LOG_PATH = read_from_file('LOG_PATH.pv')
 
 
 def get_elapsed_time(start_time):
@@ -86,11 +96,11 @@ def extract_download_target(soup: BeautifulSoup) -> []:
     if not target_tag:  # Empty
         if '/?err=1";' not in soup.select_one('script').text:
             # ?err=1 redirects to "이미지가 삭제된 주소입니다."
-            # 업로드된 후 삭제된 경우에도, 아직 업로드되지 않은 경우에도 동일 메시지...
-            print('Unknown error with:\n\n' + soup.prettify())
+            # 업로드된 후 삭제된 경우에도, 아직 업로드되지 않은 경우에도 동일 메시지 출력
+            log('Unknown error with:\n\n' + soup.prettify())
     else:
         if target_tag['href'].split('.')[-1] == 'dn':
-            print('삭제된 이미지입니다.jpg')  # Likely to be a file in a wrong format
+            log('삭제된 이미지입니다.jpg')  # Likely to be a file in a wrong format
         else:
             # Retrieve the file name
             dropdown_menus = soup.select('body div.container ul.dropdown-menu li a')
@@ -105,7 +115,7 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             except Exception as e:
                 # domain.com/image.jpg -> domain.com/image -> image
                 name = split_on_last_pattern(url, '.')[0].split('/')[-1]
-                print('Error: Cannot retrieve the file name.(%s)' + str(e))
+                log('Error: Cannot retrieve the file name.(%s)' + str(e))
             return [url, name]
 
 
@@ -123,7 +133,7 @@ def upload_image() -> str:
     browser.get(Path.ROOT_DOMAIN)
     files_to_upload = glob.glob(Path.BACKUP_PATH + '*.jpg')  # Should be len() = 1
     if not files_to_upload:  # Empty
-        print('Error: The last backup not available.')
+        log('Error: The last backup not available.')
         stored_files = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')
         # Pick a random file among stored files.
         file_to_upload = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')[random.randint(0, len(stored_files) - 1)]
@@ -136,7 +146,7 @@ def upload_image() -> str:
 
     image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
     uploaded_url = split_on_last_pattern(image_url, '.')[0]  # domain.com/name
-    print(file_to_upload + ' uploaded on ' + uploaded_url)
+    log(file_to_upload + ' uploaded on ' + uploaded_url)
     return uploaded_url
 
 
@@ -193,7 +203,7 @@ while True:
 
     # If fails 1000 times in a row, something must have went wrong.
     failure_count = 0
-    MAX_FAILURE = 2
+    MAX_FAILURE = 1000
     somethings_wrong = False
     detected_in_span = False
 
@@ -212,16 +222,14 @@ while True:
                     occupied_url = url_to_scan  # Mark the url as occupied.
                     detected_in_span = True
                     # TODO: Download using another thread(For larger files)
-                    file_url = target[0]  # url of the file to download
-                    file_name = target[1]
-                    download(file_url, file_name)
+                    download(target[0], target[1])  # The url of the file and the file name for a reference.
 
                     # Report
                     checks = '['
                     for j in range(i):
                         checks += ' -'
                     checks += ' V ]'
-                    print(checks)
+                    log(checks)
 
                     break  # Scanning span must be shifted.
                 else:  # Move to the next target.
@@ -233,17 +241,17 @@ while True:
             if time_left > 0:
                 pause = random.uniform(1.5, 3)
                 time.sleep(pause)
-                print('Scanning for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
+                log('Scanning for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
             else:
-                print('Scanning for (%.1f)' % elapsed_time)  # Scanning got slower: Hardly executed.
+                log('Scanning for (%.1f)' % elapsed_time)  # Scanning got slower: Hardly executed.
 
             if detected_in_span:
                 failure_count = 0
                 detected_in_span = False  # Turn off the switch for the later use.
             else:
                 failure_count += 1
-                print('Nothing found over the span of %d.' % scanning_url_span)
-            print('Consecutive failures: %i\n(%s)\n' % (failure_count, str(datetime.datetime.now()).split('.')[0]))
+                log('Nothing found over the span of %d.' % scanning_url_span)
+            log('Consecutive failures: %i\n(%s)\n' % (failure_count, str(datetime.datetime.now()).split('.')[0]))
 
         else:  # Failure count reached the limit. Something went wrong.
             somethings_wrong = True
