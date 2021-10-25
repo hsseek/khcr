@@ -14,9 +14,11 @@ import glob
 
 # Regarding scanning
 # TODO: Store it to another path (To prevent causing confusion with other files.)
-MAX_SCANNING_URL_SPAN = 8
-MIN_SCANNING_URL_SPAN = 4
+MAX_SCANNING_URL_SPAN = 5
+MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
+MIN_PAUSE = 1.5
+MAX_PAUSE = 4.5
 
 
 def log(message: str):
@@ -261,7 +263,7 @@ while True:
             time_left = SCANNING_TIME_SPAN - elapsed_time
             # Implement jitter.
             if time_left > 0:
-                pause = random.uniform(1.5, 3)
+                pause = random.uniform(MIN_PAUSE, MAX_PAUSE)
                 time.sleep(pause)
                 log('Scanning for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
             else:
