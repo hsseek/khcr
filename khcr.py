@@ -17,7 +17,7 @@ MAX_SCANNING_URL_SPAN = 5
 MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
 MIN_PAUSE = 1.5
-MAX_PAUSE = 4.0
+MAX_PAUSE = 4.2
 
 
 def log(message: str):
@@ -66,7 +66,7 @@ def backup(file_path: str):
         # Force the extension to jpg
         if copied_file_extension != 'jpg':
             copied_file_name = copied_file_name.split('.')[0] + '.jpg'
-        log('Backed up to %s' % (backup_path + copied_file_name))
+        log('Backed up as %s' % copied_file_name)
 
         # Remove the previous file(s) and copy the new file.
         previous_files = glob.glob(Path.BACKUP_PATH + '*')
