@@ -17,7 +17,7 @@ MAX_SCANNING_URL_SPAN = 5
 MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
 MIN_PAUSE = 1.5
-MAX_PAUSE = 4.15
+MAX_PAUSE = 4.0
 
 
 def log(message: str):
@@ -74,7 +74,7 @@ def backup(file_path: str):
             os.remove(file)
         copyfile(file_path, backup_path + copied_file_name)
     except Exception as e:
-        log('Backup went wrong. Do not change the record.\nError: ' + str(e))
+        log('Backup went wrong. Do not change the record.\n(Error: %s)' % str(e))
 
 
 class Path:
@@ -123,7 +123,7 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             except Exception as e:
                 # domain.com/image.jpg -> domain.com/image -> image
                 storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
-                log('Error: Cannot retrieve the file data.(%s)' % str(e))
+                log('Cannot retrieve the file data.\n(Error: %s)' % str(e))
             return [url, storing_name]
 
 
