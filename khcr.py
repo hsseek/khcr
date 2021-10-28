@@ -17,7 +17,7 @@ MAX_SCANNING_URL_SPAN = 5
 MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
 MIN_PAUSE = 1.5
-MAX_PAUSE = 4.0
+MAX_PAUSE = 4.0  # 3/808
 
 
 def log(message: str):
@@ -55,17 +55,15 @@ def download(url: str, file_name: str):
         backup(file_path)
         log("Stored to " + str(os.path.abspath(file_path)))
     else:  # HTTP status code 4XX/5XX
-        log("Download failed: status code {}\n{}".format(r.status_code, r.text))
+        log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text))
 
 
 def backup(file_path: str):
     try:
         backup_path = Path.BACKUP_PATH
         copied_file_name = file_path.split('/')[-1].split('-')[-1]  # path/index-filename.png -> filename.png
-        copied_file_extension = copied_file_name.split('.')[-1]
-        # Force the extension to jpg
-        if copied_file_extension != 'jpg':
-            copied_file_name = copied_file_name.split('.')[0] + '.jpg'
+        if copied_file_name.startswith('.'):  # glob won't detect hidden files with '/*'.
+            copied_file_name = str(random.randint(0, 9)) + copied_file_name
         log('Backed up as %s' % copied_file_name)
 
         # Remove the previous file(s) and copy the new file.
@@ -74,7 +72,7 @@ def backup(file_path: str):
             os.remove(file)
         copyfile(file_path, backup_path + copied_file_name)
     except Exception as e:
-        log('Backup went wrong. Do not change the record.\n(Error: %s)' % str(e))
+        log('Error: Backup went wrong. Do not change the record.(%s)' % str(e))
 
 
 class Path:
@@ -123,7 +121,7 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             except Exception as e:
                 # domain.com/image.jpg -> domain.com/image -> image
                 storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
-                log('Cannot retrieve the file data.\n(Error: %s)' % str(e))
+                log('Error: Cannot retrieve the file data.(%s)' % str(e))
             return [url, storing_name]
 
 
@@ -139,7 +137,7 @@ def upload_image() -> str:
 
     # Open the browser and upload the last image.
     browser.get(Path.ROOT_DOMAIN)
-    files_to_upload = glob.glob(Path.BACKUP_PATH + '*.jpg')  # Should be len() = 1
+    files_to_upload = glob.glob(Path.BACKUP_PATH + '*')  # Should be len() = 1
     if not files_to_upload:  # Empty
         log('Error: The last backup not available.')
         stored_files = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')
