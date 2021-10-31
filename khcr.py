@@ -1,3 +1,5 @@
+import traceback
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -17,7 +19,7 @@ MAX_SCANNING_URL_SPAN = 5
 MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
 MIN_PAUSE = 1.5
-MAX_PAUSE = 4.0  # 3/808
+MAX_PAUSE = 4.0  # 9/3486 = 0.26%
 
 
 def log(message: str):
@@ -53,7 +55,7 @@ def download(url: str, file_name: str):
                     f.flush()
                     os.fsync(f.fileno())
         backup(file_path)
-        log("Stored to " + str(os.path.abspath(file_path)))
+        log("Stored as " + stored_name)
     else:  # HTTP status code 4XX/5XX
         log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text))
 
@@ -64,7 +66,7 @@ def backup(file_path: str):
         copied_file_name = file_path.split('/')[-1].split('-')[-1]  # path/index-filename.png -> filename.png
         if copied_file_name.startswith('.'):  # glob won't detect hidden files with '/*'.
             copied_file_name = str(random.randint(0, 9)) + copied_file_name
-        log('Backed up as %s' % copied_file_name)
+        # log('Backed up as %s' % copied_file_name)
 
         # Remove the previous file(s) and copy the new file.
         previous_files = glob.glob(Path.BACKUP_PATH + '*')
@@ -84,7 +86,7 @@ class Path:
     LOG_PATH = read_from_file('LOG_PATH.pv')
 
 
-def __get_elapsed_time(start_time):
+def __get_elapsed_time(start_time) -> float:
     end_time = datetime.datetime.now()
     return (end_time - start_time).total_seconds()
 
@@ -216,62 +218,83 @@ def get_next_url(url: str) -> str:
     return url_root
 
 
+def __get_str_time() -> str:
+    return str(datetime.datetime.now()).split('.')[0]
+
+
 while True:
-    # Upload a file to get the start of a scanning sequence
-    occupied_url = upload_image()  # Intended
-    url_to_scan = get_next_url(occupied_url)
+    try:
+        # Upload a file to get the start of a scanning sequence
+        occupied_url = upload_image()
+        url_to_scan = get_next_url(occupied_url)
 
-    # If fails 1000 times in a row, something must have went wrong.
-    failure_count = 0
-    MAX_FAILURE = 1000
-    somethings_wrong = False
-    detected_in_span = False
+        # If fails 1000 times in a row, something must have went wrong.
+        failure_count = 0
+        MAX_FAILURE = 1000
+        somethings_wrong = False
+        detected_in_span = False
 
-    while not somethings_wrong:
-        if failure_count < MAX_FAILURE:
-            # Set the timer.
-            scan_start_time = datetime.datetime.now()
+        # Time span between successful downloads
+        last_downloaded = datetime.datetime.now()
 
-            url_to_scan = get_next_url(occupied_url)
-            scanning_url_span = random.randint(MIN_SCANNING_URL_SPAN, MAX_SCANNING_URL_SPAN)
-            for i in range(scanning_url_span):
-                # Retrieve the next url
-                source = requests.get(url_to_scan).text
-                target = extract_download_target(BeautifulSoup(source, 'html.parser'))
-                if target is not None:  # A file has been uploaded on the page.
-                    occupied_url = url_to_scan  # Mark the url as occupied.
-                    detected_in_span = True
-                    # TODO: Download using another thread(For larger files)
-                    download(target[0], target[1])  # The url of the file and the file name for a reference.
+        while not somethings_wrong:
+            first_trial_time = datetime.datetime.now()
+            if failure_count < MAX_FAILURE:
+                # Set the timer.
+                scan_start_time = datetime.datetime.now()
 
-                    # Report
-                    checks = '['
-                    for j in range(i):
-                        checks += ' -'
-                    checks += ' V ]'
-                    log(checks)
+                url_to_scan = get_next_url(occupied_url)
+                scanning_url_span = random.randint(MIN_SCANNING_URL_SPAN, MAX_SCANNING_URL_SPAN)
+                for i in range(scanning_url_span):
+                    # Retrieve the next url
+                    source = requests.get(url_to_scan).text
+                    target = extract_download_target(BeautifulSoup(source, 'html.parser'))
+                    if target is not None:  # A file has been uploaded on the page.
+                        occupied_url = url_to_scan  # Mark the url as occupied.
+                        detected_in_span = True
+                        # TODO: Download using another thread(For larger files)
+                        download(target[0], target[1])  # The url of the file and the file name for a reference.
 
-                    break  # Scanning span must be shifted.
-                else:  # Move to the next target.
-                    url_to_scan = get_next_url(url_to_scan)
+                        # Visualization
+                        checks = '['
+                        for j in range(i):
+                            checks += ' -'
+                        checks += ' V ]'
 
-            elapsed_time = __get_elapsed_time(scan_start_time)
-            time_left = SCANNING_TIME_SPAN - elapsed_time
-            # Implement jitter.
-            if time_left > 0:
-                pause = random.uniform(MIN_PAUSE, MAX_PAUSE)
-                time.sleep(pause)
-                log('Scanning for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
-            else:
-                log('Scanning for (%.1f)' % elapsed_time)  # Scanning got slower: Hardly executed.
+                        # Report the time span
+                        download_span_sec = int(__get_elapsed_time(last_downloaded))
+                        download_span_str = '%d sec' % download_span_sec if download_span_sec < 60 \
+                            else '%d min' % int(download_span_sec / 60)
+                        log('%s (%s since the last download)' % (checks, download_span_str))
+                        last_downloaded = datetime.datetime.now()  # Update for the later use.
 
-            if detected_in_span:
-                failure_count = 0
-                detected_in_span = False  # Turn off the switch for the later use.
-            else:
-                failure_count += 1
-                log('Nothing found over the span of %d.' % scanning_url_span)
-            log('Consecutive failures: %i\n(%s)\n' % (failure_count, str(datetime.datetime.now()).split('.')[0]))
+                        break  # Scanning span must be shifted.
+                    else:  # Move to the next target.
+                        url_to_scan = get_next_url(url_to_scan)
 
-        else:  # Failure count reached the limit. Something went wrong.
-            somethings_wrong = True
+                elapsed_time = __get_elapsed_time(scan_start_time)
+                time_left = SCANNING_TIME_SPAN - elapsed_time
+                # Implement jitter.
+                if time_left > 0:
+                    pause = random.uniform(MIN_PAUSE, MAX_PAUSE)
+                    time.sleep(pause)
+                    log('Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
+                else:
+                    log('Scanned for (%.1f)' % elapsed_time)  # Scanning got slower: Hardly executed.
+
+                if detected_in_span:
+                    failure_count = 0
+                    detected_in_span = False  # Turn off the switch for the later use.
+                else:
+                    failure_count += 1
+                    log('Nothing found over the span of %d.' % scanning_url_span)
+                    log('Consecutive failures: %i\n(%s)' % (failure_count, __get_str_time()))
+                log('')
+
+            else:  # Failure count reached the limit. Something went wrong.
+                somethings_wrong = True
+                loop_span = int(__get_elapsed_time(first_trial_time) / 60)
+                log('Error: Failed %d times in a row for %d minutes.\t%s' % (
+                    MAX_FAILURE, loop_span, __get_str_time()))
+    except Exception as main_loop_exception:
+        log('%s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
