@@ -18,8 +18,8 @@ import glob
 MAX_SCANNING_URL_SPAN = 5
 MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
-MIN_PAUSE = 1.5
-MAX_PAUSE = 4.0  # 9/3486 = 0.26%
+MIN_PAUSE = 0.9
+MAX_PAUSE = 2.8
 
 
 def log(message: str):
