@@ -262,10 +262,8 @@ while True:
                         checks += ' V ]'
 
                         # Report the time span
-                        download_span_sec = int(__get_elapsed_time(last_downloaded))
-                        download_span_str = '%d sec' % download_span_sec if download_span_sec < 60 \
-                            else '%d min' % int(download_span_sec / 60)
-                        log('%s (%s since the last download)' % (checks, download_span_str))
+                        download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
+                        log('%s : %.1f min' % (checks, download_span_min))
                         last_downloaded = datetime.datetime.now()  # Update for the later use.
 
                         break  # Scanning span must be shifted.
