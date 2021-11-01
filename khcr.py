@@ -295,4 +295,4 @@ while True:
                 log('Error: Failed %d times in a row for %d minutes.\t%s' % (
                     MAX_FAILURE, loop_span, __get_str_time()))
     except Exception as main_loop_exception:
-        log('%s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
+        log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
