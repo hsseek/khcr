@@ -55,9 +55,9 @@ def download(url: str, file_name: str):
                     f.flush()
                     os.fsync(f.fileno())
         backup(file_path)
-        log("Stored %s (%s)" % (stored_name, __get_str_time()))
+        log("Stored %s (%s)." % (stored_name, __get_str_time()))
     else:  # HTTP status code 4XX/5XX
-        log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text))
+        log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text) + ' (%s)' % __get_str_time)
 
 
 def backup(file_path: str):
@@ -66,7 +66,6 @@ def backup(file_path: str):
         copied_file_name = file_path.split('/')[-1].split('-')[-1]  # path/index-filename.png -> filename.png
         if copied_file_name.startswith('.'):  # glob won't detect hidden files with '/*'.
             copied_file_name = str(random.randint(0, 9)) + copied_file_name
-        # log('Backed up as %s' % copied_file_name)
 
         # Remove the previous file(s) and copy the new file.
         previous_files = glob.glob(Path.BACKUP_PATH + '*')
@@ -74,7 +73,7 @@ def backup(file_path: str):
             os.remove(file)
         copyfile(file_path, backup_path + copied_file_name)
     except Exception as e:
-        log('Error: Backup went wrong. Do not change the record.(%s)' % str(e))
+        log('Error: Backup went wrong. Do not change the record.(%s)\n(%s)' % (__get_str_time(), e))
 
 
 class Path:
@@ -94,37 +93,31 @@ def __get_elapsed_time(start_time) -> float:
 def extract_download_target(soup: BeautifulSoup) -> []:
     # If the image is still available.
     # Retrieve the image url
-    target_tag = soup.select_one('link')
-    if not target_tag:  # Empty
-        if '/?err=1";' not in soup.select_one('script').text:
-            # ?err=1 redirects to "이미지가 삭제된 주소입니다."
-            # 업로드된 후 삭제된 경우에도, 아직 업로드되지 않은 경우에도 동일 메시지 출력
-            log('Unknown error(%s)\n\n' % __get_str_time() + soup.prettify())
-    else:
-        if target_tag['href'].split('.')[-1] == 'dn':
-            log('삭제된 이미지입니다.jpg')  # Likely to be a file in a wrong format
-        else:
-            # Retrieve the file name
-            dropdown_menus = soup.select('body div.container ul.dropdown-menu li a')
-            # Retrieve something like:
-            # [<a href="javascript:;">FileName : seller.jpg</a>,
-            # <a href="javascript:;">ViewCount : 23</a>, ...]
-            url = target_tag['href']  # url of the file to download
-            try:
-                # Split at ' : ' rather than remove 'FileName : ' not to be dependent on browser language.
-                # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
-                name = dropdown_menus[0].contents[0].split(' : ')[-1].strip().replace(" ", "_")
-                count_str = dropdown_menus[3].contents[0].split(' : ')[-1].strip()
-                count_digits = ""
-                for char in count_str:
-                    if char.isdigit():
-                        count_digits += char
-                storing_name = '%02d-%s' % (int(count_digits), name)
-            except Exception as e:
-                # domain.com/image.jpg -> domain.com/image -> image
-                storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
-                log('Error: Cannot retrieve the file data.(%s)\n%s' % (__get_str_time(), e))
-            return [url, storing_name]
+    target_tag = soup.find_all('link', {'rel': 'image_src'})
+    if target_tag:
+        if len(target_tag) > 1:
+            log('Warning: Multiple image sources.\n' + str(target_tag))
+        # Retrieve the file name
+        dropdown_menus = soup.select('body div.container ul.dropdown-menu li a')
+        # Retrieve something like:
+        # [<a href="javascript:;">FileName : seller.jpg</a>,
+        # <a href="javascript:;">ViewCount : 23</a>, ...]
+        url = target_tag[0]['href']  # url of the file to download
+        try:
+            # Split at ' : ' rather than remove 'FileName : ' not to be dependent on browser language.
+            # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
+            name = dropdown_menus[0].contents[0].split(' : ')[-1].strip().replace(" ", "_")
+            view_count_str = dropdown_menus[-3].contents[0].split(' : ')[-1].strip()
+            view_count_digits = ""
+            for char in view_count_str:
+                if char.isdigit():
+                    view_count_digits += char
+            storing_name = '%02d-%s' % (int(view_count_digits), name)
+        except Exception as e:
+            # domain.com/image.jpg -> domain.com/image -> image
+            storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
+            log('Error: Cannot retrieve the file data.(%s)\n%s' % (__get_str_time(), e))
+        return [url, storing_name]
 
 
 def upload_image() -> str:
@@ -252,19 +245,22 @@ while True:
                     if target is not None:  # A file has been uploaded on the page.
                         occupied_url = url_to_scan  # Mark the url as occupied.
                         detected_in_span = True
-                        # TODO: Download using another thread(For larger files)
-                        download(target[0], target[1])  # The url of the file and the file name for a reference.
+                        if target[0].split('.')[-1] == 'dn':
+                            log('삭제된 이미지입니다(*.dn). (%s)' % __get_str_time())
+                        else:
+                            # TODO: Download using another thread(For larger files)
+                            download(target[0], target[1])  # The url of the file and the file name for a reference.
 
-                        # Visualization
-                        checks = '['
-                        for j in range(i):
-                            checks += ' -'
-                        checks += ' V ]'
+                            # Visualization
+                            checks = '['
+                            for j in range(i):
+                                checks += ' -'
+                            checks += ' V ]'
 
-                        # Report the time span
-                        download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
-                        log('%s in %.1f min' % (checks, download_span_min))
-                        last_downloaded = datetime.datetime.now()  # Update for the later use.
+                            # Report the time span
+                            download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
+                            log('%s in %.1f min' % (checks, download_span_min))
+                            last_downloaded = datetime.datetime.now()  # Update for the later use.
 
                         break  # Scanning span must be shifted.
                     else:  # Move to the next target.
@@ -278,7 +274,7 @@ while True:
                     time.sleep(pause)
                     print('Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
                 else:
-                    log('Scanned for %.1f' % elapsed_time)  # Scanning got slower.
+                    log('Scanned for %.1f (%s)' % (elapsed_time, __get_str_time()))  # Scanning got slower.
 
                 if detected_in_span:
                     failure_count = 0
@@ -286,12 +282,12 @@ while True:
                 else:
                     failure_count += 1
                     print('Nothing found over the span of %d.' % scanning_url_span)
-                    print('Consecutive failures: %i\n(%s)' % (failure_count, __get_str_time()))
+                    print('Consecutive failures: %i\n(%s)\n' % (failure_count, __get_str_time()))
 
             else:  # Failure count reached the limit. Something went wrong.
                 somethings_wrong = True
                 loop_span = int(__get_elapsed_time(first_trial_time) / 60)
-                log('Error: Failed %d times in a row for %d minutes.\t%s' % (
+                log('Error: Failed %d times in a row for %d minutes. %s' % (
                     MAX_FAILURE, loop_span, __get_str_time()))
     except Exception as main_loop_exception:
         log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
