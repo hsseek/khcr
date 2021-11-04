@@ -39,14 +39,9 @@ def download(url: str, file_name: str):
     if not os.path.exists(download_path):
         os.makedirs(download_path)  # create folder if it does not exist
 
-    # Get the image index.
-    page_url = __split_on_last_pattern(url, '.')[0]  # Remove the extension from the file url.
-    index = __format_url_index(__get_url_index(page_url))  # Convert to the integer index.
-    stored_name = index + '-' + file_name
-
     # Set the download target.
     r = requests.get(url, stream=True)
-    file_path = os.path.join(download_path, stored_name)
+    file_path = os.path.join(download_path, file_name)
     if r.ok:
         with open(file_path, 'wb') as f:
             for chunk in r.iter_content(chunk_size=1024 * 8):
@@ -55,7 +50,6 @@ def download(url: str, file_name: str):
                     f.flush()
                     os.fsync(f.fileno())
         backup(file_path)
-        log("Stored %s (%s)." % (stored_name, __get_str_time()))
     else:  # HTTP status code 4XX/5XX
         log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text) + ' (%s)' % __get_str_time)
 
@@ -99,20 +93,21 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             log('Warning: Multiple image sources.\n' + str(target_tag))
         # Retrieve the file name
         dropdown_menus = soup.select('body div.container ul.dropdown-menu li a')
-        # Retrieve something like:
-        # [<a href="javascript:;">FileName : seller.jpg</a>,
-        # <a href="javascript:;">ViewCount : 23</a>, ...]
         url = target_tag[0]['href']  # url of the file to download
         try:
             # Split at ' : ' rather than remove 'FileName : ' not to be dependent on browser language.
             # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
             name = dropdown_menus[0].contents[0].split(' : ')[-1].strip().replace(" ", "_")
+            # The view count
             view_count_str = dropdown_menus[-3].contents[0].split(' : ')[-1].strip()
             view_count_digits = ""
             for char in view_count_str:
                 if char.isdigit():
                     view_count_digits += char
-            storing_name = '%02d-%s' % (int(view_count_digits), name)
+            # The digitized index
+            page_url = __split_on_last_pattern(url, '.')[0]  # Remove the extension from the file url.
+            index = __format_url_index(__get_url_index(page_url))  # Convert to the integer index.
+            storing_name = '%s-%02d-%s' % (index, int(view_count_digits), name)
         except Exception as e:
             # domain.com/image.jpg -> domain.com/image -> image
             storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
@@ -246,7 +241,8 @@ while True:
                         occupied_url = url_to_scan  # Mark the url as occupied.
                         detected_in_span = True
                         if target[0].split('.')[-1] == 'dn':
-                            log('삭제된 이미지입니다(*.dn). (%s)' % __get_str_time())
+                            log('[ - ] %s 삭제된 이미지입니다. (%s)' %
+                                (__split_on_last_pattern(target[1], '-')[0], __get_str_time()))
                         else:
                             # TODO: Download using another thread(For larger files)
                             download(target[0], target[1])  # The url of the file and the file name for a reference.
@@ -259,7 +255,7 @@ while True:
 
                             # Report the time span
                             download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
-                            log('%s in %.1f min' % (checks, download_span_min))
+                            log('%s %s in %.1f min (%s)' % (checks, target[1], download_span_min, __get_str_time()))
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
                         break  # Scanning span must be shifted.
