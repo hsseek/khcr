@@ -55,7 +55,7 @@ def download(url: str, file_name: str):
                     f.flush()
                     os.fsync(f.fileno())
         backup(file_path)
-        log("Stored as " + stored_name)
+        log("Stored %s (%s)" % (stored_name, __get_str_time()))
     else:  # HTTP status code 4XX/5XX
         log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text))
 
@@ -99,7 +99,7 @@ def extract_download_target(soup: BeautifulSoup) -> []:
         if '/?err=1";' not in soup.select_one('script').text:
             # ?err=1 redirects to "이미지가 삭제된 주소입니다."
             # 업로드된 후 삭제된 경우에도, 아직 업로드되지 않은 경우에도 동일 메시지 출력
-            log('Unknown error with:\n\n' + soup.prettify())
+            log('Unknown error(%s)\n\n' % __get_str_time() + soup.prettify())
     else:
         if target_tag['href'].split('.')[-1] == 'dn':
             log('삭제된 이미지입니다.jpg')  # Likely to be a file in a wrong format
@@ -123,7 +123,7 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             except Exception as e:
                 # domain.com/image.jpg -> domain.com/image -> image
                 storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
-                log('Error: Cannot retrieve the file data.(%s)' % str(e))
+                log('Error: Cannot retrieve the file data.(%s)\n%s' % (__get_str_time(), e))
             return [url, storing_name]
 
 
@@ -141,7 +141,7 @@ def upload_image() -> str:
     browser.get(Path.ROOT_DOMAIN)
     files_to_upload = glob.glob(Path.BACKUP_PATH + '*')  # Should be len() = 1
     if not files_to_upload:  # Empty
-        log('Error: The last backup not available.')
+        log('Error: The last backup not available.(%s)' % __get_str_time())
         stored_files = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')
         # Pick a random file among stored files.
         file_to_upload = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')[random.randint(0, len(stored_files) - 1)]
@@ -154,7 +154,7 @@ def upload_image() -> str:
 
     image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
     uploaded_url = __split_on_last_pattern(image_url, '.')[0]  # domain.com/name
-    log(file_to_upload + ' uploaded on ' + uploaded_url)
+    log('%s uploaded on %s. (%s)' % (file_to_upload.split('/')[-1], uploaded_url, __get_str_time()))
     return uploaded_url
 
 
@@ -263,7 +263,7 @@ while True:
 
                         # Report the time span
                         download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
-                        log('%s : %.1f min' % (checks, download_span_min))
+                        log('%s in %.1f min' % (checks, download_span_min))
                         last_downloaded = datetime.datetime.now()  # Update for the later use.
 
                         break  # Scanning span must be shifted.
@@ -276,18 +276,17 @@ while True:
                 if time_left > 0:
                     pause = random.uniform(MIN_PAUSE, MAX_PAUSE)
                     time.sleep(pause)
-                    log('Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
+                    print('Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
                 else:
-                    log('Scanned for (%.1f)' % elapsed_time)  # Scanning got slower: Hardly executed.
+                    log('Scanned for %.1f' % elapsed_time)  # Scanning got slower.
 
                 if detected_in_span:
                     failure_count = 0
                     detected_in_span = False  # Turn off the switch for the later use.
                 else:
                     failure_count += 1
-                    log('Nothing found over the span of %d.' % scanning_url_span)
-                    log('Consecutive failures: %i\n(%s)' % (failure_count, __get_str_time()))
-                log('')
+                    print('Nothing found over the span of %d.' % scanning_url_span)
+                    print('Consecutive failures: %i\n(%s)' % (failure_count, __get_str_time()))
 
             else:  # Failure count reached the limit. Something went wrong.
                 somethings_wrong = True
