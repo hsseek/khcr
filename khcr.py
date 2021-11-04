@@ -224,12 +224,12 @@ while True:
         MAX_FAILURE = 1000
         somethings_wrong = False
         detected_in_span = False
+        first_trial_time = datetime.datetime.now()
 
         # Time span between successful downloads
         last_downloaded = datetime.datetime.now()
 
         while not somethings_wrong:
-            first_trial_time = datetime.datetime.now()
             if failure_count < MAX_FAILURE:
                 # Set the timer.
                 scan_start_time = datetime.datetime.now()
@@ -296,7 +296,7 @@ while True:
             else:  # Failure count reached the limit. Something went wrong.
                 somethings_wrong = True
                 loop_span = int(__get_elapsed_time(first_trial_time) / 60)
-                log('Error: Failed %d times in a row for %d minutes. %s' % (
+                log('Warning: Failed %d times in a row for %d minutes.\t(%s)' % (
                     MAX_FAILURE, loop_span, __get_str_time()))
     except Exception as main_loop_exception:
         log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))

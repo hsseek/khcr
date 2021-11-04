@@ -75,12 +75,3 @@ class IgnoreListDb:
 
     def close_connection(self):
         self.database.close()
-
-
-# database = IgnoreListDb()
-# database.create_table()
-# database.increase_count('Tulips.jpg')
-# database.increase_count('022CEF42513E22BF18.jpeg')
-# database.unregister_filename('022CEF42513E22BF18.jpeg')
-# for item in database.fet1ch_names():
-#     print(item)
