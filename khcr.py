@@ -15,6 +15,8 @@ from shutil import copyfile
 import glob
 
 # Regarding scanning
+import sqlite
+
 MAX_SCANNING_URL_SPAN = 5
 MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
@@ -211,6 +213,7 @@ def __get_str_time() -> str:
 
 
 while True:
+    ignored_list_db = sqlite.IgnoreListDb()
     try:
         # Upload a file to get the start of a scanning sequence
         occupied_url = upload_image()
@@ -244,29 +247,32 @@ while True:
                         local_name = target[1]
                         if file_url.split('.')[-1] == 'dn':
                             # Print the span without updating last_downloaded
-                            download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
-                            log('[ - ] in %.1f :\t%s 삭제된 이미지입니다.\t(%s)' %
-                                (download_span_min, __split_on_last_pattern(local_name, '-')[0], __get_str_time()))
-                        # elif file_url.split('/')[-1] in BLACK_LIST:
-                            # TODO: Filter repeated files with specific names.
-                        else:
-                            # TODO: Download using another thread(For larger files)
-                            download(target[0], target[1])  # The url of the file and the file name for a reference.
-
+                            download_span = int(__get_elapsed_time(last_downloaded)) / 60
+                            log('[ - ] in %.1f\t: %s-*.dn "삭제된 이미지입니다."\t(%s)' %
+                                (download_span, __split_on_last_pattern(local_name, '-')[0], __get_str_time()))
+                        else:  # A valid link
                             # Visualization
                             checks = '['
                             for j in range(i):
                                 checks += ' -'
                             checks += ' V ]'
-
                             # The minutes spent between consecutive successful downloads
-                            download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
-                            # [ V ] in 2.3: filename.jpg (2021-01-23 12:34:56)
-                            log('%s in %.1f :\t%s\t(%s)' % (checks, download_span_min, target[1], __get_str_time()))
+                            download_span = int(__get_elapsed_time(last_downloaded)) / 60
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
+                            formatted_file_name = __split_on_last_pattern(local_name, '-')[1]
+                            if formatted_file_name in ignored_list_db.fetch_names():
+                                # A valid link, but should be ignored.
+                                ignored_list_db.increase_count(formatted_file_name)
+                                log('%s in %.1f\t: (ignored) %s\t(%s)' %
+                                    (checks, download_span, formatted_file_name, __get_str_time()))
+                            else:
+                                download(file_url, local_name)  # The url of the file and the file name for a reference.
+                                # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
+                                log('%s in %.1f\t: %s\t(%s)' % (checks, download_span, local_name, __get_str_time()))
+
                         break  # Scanning span must be shifted.
-                    else:  # Move to the next target.
+                    else:  # Move to the next target in the span.
                         url_to_scan = get_next_url(url_to_scan)
 
                 elapsed_time = __get_elapsed_time(scan_start_time)
@@ -275,9 +281,9 @@ while True:
                 if time_left > 0:
                     pause = random.uniform(MIN_PAUSE, MAX_PAUSE)
                     time.sleep(pause)
-                    print('Scanned for %.1f(%.1f)s' % ((pause + elapsed_time), elapsed_time))
+                    print('Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
                 else:
-                    log('Scanned for %.1fs\t(%s)' % (elapsed_time, __get_str_time()))  # Scanning got slower.
+                    log('\t\t\t\t: Scanned for %.1f"\t(%s)' % (elapsed_time, __get_str_time()))  # Scanning got slower.
 
                 if detected_in_span:
                     failure_count = 0
@@ -294,3 +300,5 @@ while True:
                     MAX_FAILURE, loop_span, __get_str_time()))
     except Exception as main_loop_exception:
         log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
+    finally:
+        ignored_list_db.close_connection()
