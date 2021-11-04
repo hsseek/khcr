@@ -67,7 +67,7 @@ def backup(file_path: str):
             os.remove(file)
         copyfile(file_path, backup_path + copied_file_name)
     except Exception as e:
-        log('Error: Backup went wrong. Do not change the record.(%s)\n(%s)' % (__get_str_time(), e))
+        log('Error: Backup went wrong. Do not change the record.\t(%s)\n(%s)' % (__get_str_time(), e))
 
 
 class Path:
@@ -111,7 +111,7 @@ def extract_download_target(soup: BeautifulSoup) -> []:
         except Exception as e:
             # domain.com/image.jpg -> domain.com/image -> image
             storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
-            log('Error: Cannot retrieve the file data.(%s)\n%s' % (__get_str_time(), e))
+            log('Error: Cannot retrieve the file data.\t(%s)\n%s' % (__get_str_time(), e))
         return [url, storing_name]
 
 
@@ -129,7 +129,7 @@ def upload_image() -> str:
     browser.get(Path.ROOT_DOMAIN)
     files_to_upload = glob.glob(Path.BACKUP_PATH + '*')  # Should be len() = 1
     if not files_to_upload:  # Empty
-        log('Error: The last backup not available.(%s)' % __get_str_time())
+        log('Error: The last backup not available.\t(%s)' % __get_str_time())
         stored_files = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')
         # Pick a random file among stored files.
         file_to_upload = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')[random.randint(0, len(stored_files) - 1)]
@@ -142,7 +142,7 @@ def upload_image() -> str:
 
     image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
     uploaded_url = __split_on_last_pattern(image_url, '.')[0]  # domain.com/name
-    log('%s uploaded on %s. (%s)' % (file_to_upload.split('/')[-1], uploaded_url, __get_str_time()))
+    log('%s uploaded on %s.\t(%s)' % (file_to_upload.split('/')[-1], uploaded_url, __get_str_time()))
     return uploaded_url
 
 
@@ -240,9 +240,15 @@ while True:
                     if target is not None:  # A file has been uploaded on the page.
                         occupied_url = url_to_scan  # Mark the url as occupied.
                         detected_in_span = True
-                        if target[0].split('.')[-1] == 'dn':
-                            log('[ - ] %s 삭제된 이미지입니다. (%s)' %
-                                (__split_on_last_pattern(target[1], '-')[0], __get_str_time()))
+                        file_url = target[0]
+                        local_name = target[1]
+                        if file_url.split('.')[-1] == 'dn':
+                            # Print the span without updating last_downloaded
+                            download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
+                            log('[ - ] in %.1f :\t%s 삭제된 이미지입니다.\t(%s)' %
+                                (download_span_min, __split_on_last_pattern(local_name, '-')[0], __get_str_time()))
+                        # elif file_url.split('/')[-1] in BLACK_LIST:
+                            # TODO: Filter repeated files with specific names.
                         else:
                             # TODO: Download using another thread(For larger files)
                             download(target[0], target[1])  # The url of the file and the file name for a reference.
@@ -253,10 +259,10 @@ while True:
                                 checks += ' -'
                             checks += ' V ]'
 
-                            # Report the time span
+                            # The minutes spent between consecutive successful downloads
                             download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
-                            # [ V ] in 2.3 min: filename.jpg (2021-01-23 12:34:56)
-                            log('%s in %.1f min: %s (%s)' % (checks, download_span_min, target[1], __get_str_time()))
+                            # [ V ] in 2.3: filename.jpg (2021-01-23 12:34:56)
+                            log('%s in %.1f :\t%s\t(%s)' % (checks, download_span_min, target[1], __get_str_time()))
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
                         break  # Scanning span must be shifted.
@@ -269,9 +275,9 @@ while True:
                 if time_left > 0:
                     pause = random.uniform(MIN_PAUSE, MAX_PAUSE)
                     time.sleep(pause)
-                    print('Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
+                    print('Scanned for %.1f(%.1f)s' % ((pause + elapsed_time), elapsed_time))
                 else:
-                    log('Scanned for %.1f (%s)' % (elapsed_time, __get_str_time()))  # Scanning got slower.
+                    log('Scanned for %.1fs\t(%s)' % (elapsed_time, __get_str_time()))  # Scanning got slower.
 
                 if detected_in_span:
                     failure_count = 0
