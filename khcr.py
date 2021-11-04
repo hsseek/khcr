@@ -255,7 +255,8 @@ while True:
 
                             # Report the time span
                             download_span_min = int(__get_elapsed_time(last_downloaded)) / 60
-                            log('%s %s in %.1f min (%s)' % (checks, target[1], download_span_min, __get_str_time()))
+                            # [ V ] in 2.3 min: filename.jpg (2021-01-23 12:34:56)
+                            log('%s in %.1f min: %s (%s)' % (checks, download_span_min, target[1], __get_str_time()))
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
                         break  # Scanning span must be shifted.
