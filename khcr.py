@@ -130,34 +130,37 @@ def upload_image() -> str:
     options.add_argument('disable-gpu')
     # options.add_experimental_option("detach", True)  # TEST
     browser = webdriver.Chrome(service=service, options=options)
-    wait = WebDriverWait(browser, 5)  # Upload page loading timeout: 5s
+    wait = WebDriverWait(browser, timeout=5)
+    try:  # Open the browser and upload the last image.
+        browser.get(Path.ROOT_DOMAIN)
+        files_to_upload = glob.glob(Path.BACKUP_PATH + '*')  # Should be len() = 1
+        if not files_to_upload:  # Empty
+            log('Error: The last backup not available.\t(%s)' % __get_str_time())
+            stored_files = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')
+            # Pick a random file among stored files.
+            file_to_upload = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')[random.randint(0, len(stored_files) - 1)]
+            stored_file_name = file_to_upload.split('/')[-1]
+            copyfile(file_to_upload, Path.BACKUP_PATH + stored_file_name)
+        else:
+            file_to_upload = files_to_upload[0]
+        browser.find_element(By.XPATH, '//*[@id="media_up_btn"]').send_keys(file_to_upload)
+        wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'img-responsive')))
 
-    # Open the browser and upload the last image.
-    browser.get(Path.ROOT_DOMAIN)
-    files_to_upload = glob.glob(Path.BACKUP_PATH + '*')  # Should be len() = 1
-    if not files_to_upload:  # Empty
-        log('Error: The last backup not available.\t(%s)' % __get_str_time())
-        stored_files = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')
-        # Pick a random file among stored files.
-        file_to_upload = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')[random.randint(0, len(stored_files) - 1)]
-        stored_file_name = file_to_upload.split('/')[-1]
-        copyfile(file_to_upload, Path.BACKUP_PATH + stored_file_name)
-    else:
-        file_to_upload = files_to_upload[0]
-    browser.find_element(By.XPATH, '//*[@id="media_up_btn"]').send_keys(file_to_upload)
-    wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'img-responsive')))
-    try:
-        browser.find_element(By.XPATH, '/html/body/nav/div/div[2]/ul/li[4]/a').click()
-        wait.until(expected_conditions.alert_is_present())
-        browser.switch_to.alert.accept()
-    except Exception as alert_exception:
-        log('Error: Cannot delete the uploaded seed.(%s)\t(%s)' % (alert_exception, __get_str_time()))
-
-    image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
-    uploaded_url = __split_on_last_pattern(image_url, '.')[0]  # domain.com/name
-    log('%s uploaded on %s.\t(%s)' % (file_to_upload.split('/')[-1], uploaded_url, __get_str_time()))
-    browser.quit()
-    return uploaded_url
+        image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
+        uploaded_url = __split_on_last_pattern(image_url, '.')[0]  # domain.com/name
+        log('%s uploaded on %s.\t(%s)' % (file_to_upload.split('/')[-1], uploaded_url, __get_str_time()))
+        try:  # Delete the uploaded file.
+            browser.find_element(By.XPATH, '/html/body/nav/div/div[2]/ul/li[4]/a').click()
+            wait.until(expected_conditions.alert_is_present())
+            browser.switch_to.alert.accept()
+            wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'page-wrapper')))
+        except Exception as alert_exception:
+            log('Error: Cannot delete the uploaded seed.(%s)\t(%s)' % (alert_exception, __get_str_time()))
+        return uploaded_url
+    except Exception as upload_exception:
+        log('Error: Cannot upload seed.(%s)\t(%s)' % (upload_exception, __get_str_time()))
+    finally:
+        browser.quit()
 
 
 # Split on the pattern, but always returning a list with length of 2.
