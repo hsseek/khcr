@@ -286,6 +286,9 @@ while True:
                                         ignore_verdict = True
                                     elif ignored_size - SIZE_TOLERANCE < uploaded_size < ignored_size + SIZE_TOLERANCE:
                                         ignore_verdict = True
+                                    else:  # The file name listed, but the size didn't match.
+                                        log('Warning: Should ignore %s with %d bytes? (listed as %d bytes)' %
+                                            (formatted_file_name, uploaded_size, ignored_size))
                                     if ignore_verdict:
                                         # A valid link, but should be ignored.
                                         ignored_list_db.increase_count(sizes[j][0])  # 3 from (3, 2819)
