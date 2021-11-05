@@ -279,18 +279,19 @@ while True:
                             if formatted_file_name in ignored_list_db.fetch_names():
                                 ignore_verdict = False
                                 uploaded_size = target[2]
-                                for ignored_size in ignored_list_db.fetch_sizes(formatted_file_name):
+                                sizes = ignored_list_db.fetch_sizes(formatted_file_name)  # [(3, 2819), (12, 8027), ...]
+                                for j in range(len(sizes)):
+                                    ignored_size = sizes[j][1]  # 2819 from (3, 2819)
                                     if not ignored_size:  # Null or 0 means unconditional: ignore directly.
                                         ignore_verdict = True
-                                        break
                                     elif ignored_size - SIZE_TOLERANCE < uploaded_size < ignored_size + SIZE_TOLERANCE:
                                         ignore_verdict = True
+                                    if ignore_verdict:
+                                        # A valid link, but should be ignored.
+                                        ignored_list_db.increase_count(sizes[j][0])  # 3 from (3, 2819)
+                                        log('%s in %.1f\t: (ignored) %s\t(%s)' %
+                                            (checks, download_span, formatted_file_name, __get_str_time()))
                                         break
-                                if ignore_verdict:
-                                    # A valid link, but should be ignored.
-                                    ignored_list_db.increase_count(formatted_file_name)
-                                    log('%s in %.1f\t: (ignored) %s\t(%s)' %
-                                        (checks, download_span, formatted_file_name, __get_str_time()))
                             else:
                                 download(file_url, local_name)  # The url of the file and the file name for a reference.
                                 # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)

@@ -43,10 +43,9 @@ class IgnoreListDb:
         cursor.execute("DROP TABLE %s" % Table.NAME)
         cursor.close()
 
-    def increase_count(self, filename: str):
+    def increase_count(self, db_id: int):
         cursor = self.database.cursor()
-        query = "INSERT INTO %s (%s) VALUES ('%s')" % (Table.NAME, Table.FILENAME, filename) + \
-                " ON DUPLICATE KEY UPDATE %s = %s + 1" % (Table.COUNT, Table.COUNT)
+        query = "UPDATE %s SET %s = %s+1 WHERE %s=%s" % (Table.NAME, Table.COUNT, Table.COUNT, Table.ID, db_id)
         cursor.execute(query)
         self.database.commit()
         cursor.close()
@@ -66,7 +65,19 @@ class IgnoreListDb:
         cursor.close()
         return items
 
-    def fetch_names(self):
+    def fetch_ids(self, filename: str) -> []:
+        cursor = self.database.cursor()
+        query = "SELECT %s FROM %s " % (Table.ID, Table.NAME) + \
+                "WHERE %s='%s'" % (Table.FILENAME, filename)
+        cursor.execute(query)
+        tuples = cursor.fetchall()
+        cursor.close()
+        db_ids = []
+        for i, db_id in enumerate(tuples):
+            db_ids.append(tuples[i][0])
+        return db_ids
+
+    def fetch_names(self) -> []:
         cursor = self.database.cursor()
         query = "SELECT %s FROM %s" % (Table.FILENAME, Table.NAME)
         cursor.execute(query)
@@ -77,17 +88,14 @@ class IgnoreListDb:
             names.append(tuples[i][0])
         return names
 
-    def fetch_sizes(self, filename: str):
+    def fetch_sizes(self, filename: str) -> []:
         cursor = self.database.cursor()
-        query = "SELECT %s FROM %s " % (Table.SIZE, Table.NAME) + \
+        query = "SELECT %s, %s FROM %s " % (Table.ID, Table.SIZE, Table.NAME) + \
             "WHERE %s='%s'" % (Table.FILENAME, filename)
         cursor.execute(query)
-        tuples = cursor.fetchall()
+        tuples = cursor.fetchall()  # [(3, 23819), (12, 38027), ...]
         cursor.close()
-        sizes = []
-        for i, size in enumerate(tuples):
-            sizes.append(tuples[i][0])
-        return sizes
+        return tuples
 
     def close_connection(self):
         self.database.close()
