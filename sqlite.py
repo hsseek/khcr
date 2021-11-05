@@ -5,7 +5,9 @@ import mysql.connector
 
 class Table:
     NAME = 'ignored_list'
+    ID = 'id'
     FILENAME = 'filename'
+    SIZE = 'size'
     COUNT = 'count'
     CREATED_AT = 'created_at'
     LAST_VIEWED_AT = 'last_viewed_at'
@@ -27,8 +29,10 @@ class IgnoreListDb:
     def create_table(self):
         cursor = self.database.cursor()
         cursor.execute("CREATE TABLE IF NOT EXISTS %s (" % Table.NAME +
+                       "%s INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY," % Table.ID +
                        "%s VARCHAR(250) NOT NULL PRIMARY KEY, " % Table.FILENAME +
-                       "%s INT UNSIGNED DEFAULT 1, " % Table.COUNT +
+                       "%s INT UNSIGNED DEFAULT 0, " % Table.SIZE +
+                       "%s INT UNSIGNED NOT NULL DEFAULT 1, " % Table.COUNT +
                        "%s TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " % Table.CREATED_AT +
                        "%s TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)" % Table.LAST_VIEWED_AT
                        )
@@ -72,6 +76,18 @@ class IgnoreListDb:
         for i, name in enumerate(tuples):
             names.append(tuples[i][0])
         return names
+
+    def fetch_sizes(self, filename: str):
+        cursor = self.database.cursor()
+        query = "SELECT %s FROM %s " % (Table.SIZE, Table.NAME) + \
+            "WHERE %s='%s'" % (Table.FILENAME, filename)
+        cursor.execute(query)
+        tuples = cursor.fetchall()
+        cursor.close()
+        sizes = []
+        for i, size in enumerate(tuples):
+            sizes.append(tuples[i][0])
+        return sizes
 
     def close_connection(self):
         self.database.close()

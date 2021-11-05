@@ -22,6 +22,7 @@ MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 1.5  # seconds
 MIN_PAUSE = 1.4
 MAX_PAUSE = 3.2
+SIZE_TOLERANCE = 256  # bytes
 
 
 def log(message: str):
@@ -106,6 +107,9 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             for char in view_count_str:
                 if char.isdigit():
                     view_count_digits += char
+            # The size
+            size_str = dropdown_menus[1].contents[0].split(' : ')[-1].split(' ')[0]
+            size = int(size_str.replace(',', ''))
             # The digitized index
             page_url = __split_on_last_pattern(url, '.')[0]  # Remove the extension from the file url.
             index = __format_url_index(__get_url_index(page_url))  # Convert to the integer index.
@@ -113,8 +117,9 @@ def extract_download_target(soup: BeautifulSoup) -> []:
         except Exception as e:
             # domain.com/image.jpg -> domain.com/image -> image
             storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
+            size = 0
             log('Error: Cannot retrieve the file data.\t(%s)\n%s' % (__get_str_time(), e))
-        return [url, storing_name]
+        return [url, storing_name, size]
 
 
 def upload_image() -> str:
@@ -262,10 +267,20 @@ while True:
 
                             formatted_file_name = __split_on_last_pattern(local_name, '-')[1]
                             if formatted_file_name in ignored_list_db.fetch_names():
-                                # A valid link, but should be ignored.
-                                ignored_list_db.increase_count(formatted_file_name)
-                                log('%s in %.1f\t: (ignored) %s\t(%s)' %
-                                    (checks, download_span, formatted_file_name, __get_str_time()))
+                                ignore_verdict = False
+                                uploaded_size = target[2]
+                                for ignored_size in ignored_list_db.fetch_sizes(formatted_file_name):
+                                    if not ignored_size:  # Null or 0 means unconditional: ignore directly.
+                                        ignore_verdict = True
+                                        break
+                                    elif ignored_size - SIZE_TOLERANCE < uploaded_size < ignored_size + SIZE_TOLERANCE:
+                                        ignore_verdict = True
+                                        break
+                                if ignore_verdict:
+                                    # A valid link, but should be ignored.
+                                    ignored_list_db.increase_count(formatted_file_name)
+                                    log('%s in %.1f\t: (ignored) %s\t(%s)' %
+                                        (checks, download_span, formatted_file_name, __get_str_time()))
                             else:
                                 download(file_url, local_name)  # The url of the file and the file name for a reference.
                                 # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
