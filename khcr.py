@@ -146,10 +146,17 @@ def upload_image() -> str:
         file_to_upload = files_to_upload[0]
     browser.find_element(By.XPATH, '//*[@id="media_up_btn"]').send_keys(file_to_upload)
     wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'img-responsive')))
+    try:
+        browser.find_element(By.XPATH, '/html/body/nav/div/div[2]/ul/li[4]/a').click()
+        wait.until(expected_conditions.alert_is_present())
+        browser.switch_to.alert.accept()
+    except Exception as alert_exception:
+        log('Error: Cannot delete the uploaded seed.(%s)\t(%s)' % (alert_exception, __get_str_time()))
 
     image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
     uploaded_url = __split_on_last_pattern(image_url, '.')[0]  # domain.com/name
     log('%s uploaded on %s.\t(%s)' % (file_to_upload.split('/')[-1], uploaded_url, __get_str_time()))
+    browser.quit()
     return uploaded_url
 
 
