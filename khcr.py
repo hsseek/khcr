@@ -275,7 +275,7 @@ while True:
                             download_span = int(__get_elapsed_time(last_downloaded)) / 60
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
-                            file_name_ext = local_name[11:]  # Dropping '19102312-02'
+                            file_name_ext = local_name[12:]  # Dropping '19102312-02-'
                             file_name = __split_on_last_pattern(file_name_ext, '.')[0]  # Dropping the extension
                             ignore_verdict = False
                             for ignored_file_name in ignored_list_db.fetch_names():
@@ -311,11 +311,12 @@ while True:
 
                 elapsed_time = __get_elapsed_time(scan_start_time)
                 time_left = SCANNING_TIME_SPAN - elapsed_time
+                report = ''
                 # Implement jitter.
                 if time_left > 0:
                     pause = random.uniform(MIN_PAUSE, MAX_PAUSE)
                     time.sleep(pause)
-                    print('Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time))
+                    report += 'Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time)
                 else:
                     log('\t\t\t\t: Scanned for %.1f"\t(%s)' % (elapsed_time, __get_str_time()))  # Scanning got slower.
 
@@ -324,8 +325,9 @@ while True:
                     detected_in_span = False  # Turn off the switch for the later use.
                 else:
                     failure_count += 1
-                    print('Nothing found over the span of %d.' % scanning_url_span)
-                    print('Consecutive failures: %i\n(%s)\n' % (failure_count, __get_str_time()))
+                    report += '\tNothing found over the span of %d.' % scanning_url_span
+                    report += '\tConsecutive failures: %i \t(%s)' % (failure_count, __get_str_time())
+                    print(report)
 
             else:  # Failure count reached the limit. Something went wrong.
                 somethings_wrong = True
