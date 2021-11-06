@@ -275,7 +275,7 @@ while True:
                             download_span = int(__get_elapsed_time(last_downloaded)) / 60
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
-                            file_name_ext = __split_on_last_pattern(local_name, '-')[1]  # Dropping '19102312-02'
+                            file_name_ext = local_name[11:]  # Dropping '19102312-02'
                             file_name = __split_on_last_pattern(file_name_ext, '.')[0]  # Dropping the extension
                             ignore_verdict = False
                             for ignored_file_name in ignored_list_db.fetch_names():
