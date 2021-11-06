@@ -13,7 +13,7 @@ class Table:
     LAST_VIEWED_AT = 'last_viewed_at'
 
 
-class IgnoreListDb:
+class IgnoreListDatabase:
     def __init__(self):
         def read_from_file(path: str):
             with open(path) as f:
@@ -63,7 +63,7 @@ class IgnoreListDb:
         cursor.execute(query)
         items = cursor.fetchall()
         cursor.close()
-        return items
+        return items  # (id, filename, size, count, created_at, last_viewed_at)
 
     def fetch_ids(self, filename: str) -> []:
         cursor = self.database.cursor()

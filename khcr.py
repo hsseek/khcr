@@ -19,7 +19,7 @@ import sqlite
 
 MAX_SCANNING_URL_SPAN = 5
 MIN_SCANNING_URL_SPAN = 3
-SCANNING_TIME_SPAN = 1.5  # seconds
+SCANNING_TIME_SPAN = 2.5  # seconds
 MIN_PAUSE = 1.4
 MAX_PAUSE = 3.2
 SIZE_TOLERANCE = 256  # bytes
@@ -87,7 +87,7 @@ def __get_elapsed_time(start_time) -> float:
     return (end_time - start_time).total_seconds()
 
 
-def extract_download_target(soup: BeautifulSoup) -> []:
+def extract_download_target(soup: BeautifulSoup) -> ():
     # If the image is still available.
     # Retrieve the image url
     target_tag = soup.find_all('link', {'rel': 'image_src'})
@@ -119,7 +119,7 @@ def extract_download_target(soup: BeautifulSoup) -> []:
             storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
             size = 0
             log('Error: Cannot retrieve the file data.\t(%s)\n%s' % (__get_str_time(), e))
-        return [url, storing_name, size]
+        return url, storing_name, size
 
 
 def upload_image() -> str:
@@ -164,11 +164,11 @@ def upload_image() -> str:
 
 
 # Split on the pattern, but always returning a list with length of 2.
-def __split_on_last_pattern(string: str, pattern: str) -> []:
+def __split_on_last_pattern(string: str, pattern: str) -> ():
     last_piece = string.split(pattern)[-1]  # domain.com/image.jpg -> jpg
     leading_chunks = string.split(pattern)[:-1]  # [domain, com/image]
     leading_piece = pattern.join(leading_chunks)  # domain.com/image
-    return [leading_piece, last_piece]  # [domain.com/image, jpg]
+    return leading_piece, last_piece  # (domain.com/image, jpg)
 
 
 def __get_url_index(url: str) -> []:
@@ -185,7 +185,7 @@ def __get_url_index(url: str) -> []:
     return url_indices
 
 
-def __format_url_index(url_indices: []) -> str:
+def __format_url_index(url_indices: ()) -> str:
     formatted_index = ''
     for index in url_indices:
         formatted_index += '%02d' % index
@@ -228,7 +228,7 @@ def __get_str_time() -> str:
 
 
 while True:
-    ignored_list_db = sqlite.IgnoreListDb()
+    ignored_list_db = sqlite.IgnoreListDatabase()
     try:
         # Upload a file to get the start of a scanning sequence
         occupied_url = upload_image()
@@ -275,27 +275,32 @@ while True:
                             download_span = int(__get_elapsed_time(last_downloaded)) / 60
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
-                            formatted_file_name = __split_on_last_pattern(local_name, '-')[1]
-                            if formatted_file_name in ignored_list_db.fetch_names():
-                                ignore_verdict = False
-                                uploaded_size = target[2]
-                                sizes = ignored_list_db.fetch_sizes(formatted_file_name)  # [(3, 2819), (12, 8027), ...]
-                                for j in range(len(sizes)):
-                                    ignored_size = sizes[j][1]  # 2819 from (3, 2819)
-                                    if not ignored_size:  # Null or 0 means unconditional: ignore directly.
-                                        ignore_verdict = True
-                                    elif ignored_size - SIZE_TOLERANCE < uploaded_size < ignored_size + SIZE_TOLERANCE:
-                                        ignore_verdict = True
-                                    else:  # The file name listed, but the size didn't match.
-                                        log('Warning: Should ignore %s with %d bytes? (listed as %d bytes)' %
-                                            (formatted_file_name, uploaded_size, ignored_size))
-                                    if ignore_verdict:
-                                        # A valid link, but should be ignored.
-                                        ignored_list_db.increase_count(sizes[j][0])  # 3 from (3, 2819)
-                                        log('%s in %.1f\t: (ignored) %s\t(%s)' %
-                                            (checks, download_span, formatted_file_name, __get_str_time()))
-                                        break
-                            else:
+                            file_name_ext = __split_on_last_pattern(local_name, '-')[1]  # Dropping '19102312-02'
+                            file_name = __split_on_last_pattern(file_name_ext, '.')[0]  # Dropping the extension
+                            ignore_verdict = False
+                            for ignored_file_name in ignored_list_db.fetch_names():
+                                if ignored_file_name in file_name:  # The uploaded file contains a suspicious pattern.
+                                    uploaded_size = target[2]
+                                    sizes = ignored_list_db.fetch_sizes(ignored_file_name)  # [(3, 2819), (12, 807), ..]
+                                    for j in range(len(sizes)):
+                                        ignored_size = sizes[j][1]  # 2819 from (3, 2819)
+                                        if not ignored_size:  # Null or 0 means unconditional: ignore directly.
+                                            ignore_verdict = True
+                                        elif ignored_size - SIZE_TOLERANCE < uploaded_size < \
+                                                ignored_size + SIZE_TOLERANCE:
+                                            ignore_verdict = True
+                                        else:  # The file name listed, but the size didn't match.
+                                            log('Warning: Should ignore %s with %d bytes? (listed as %d bytes)' %
+                                                (file_name, uploaded_size, ignored_size))
+                                        if ignore_verdict:  # The name and the size matched an item in the list.
+                                            # A valid link, but should be ignored.
+                                            ignored_list_db.increase_count(sizes[j][0])  # 3 from (3, 2819)
+                                            log('%s in %.1f\t: (ignored) %s\t(%s)' %
+                                                (checks, download_span, file_name, __get_str_time()))
+                                            break
+                                if ignore_verdict:  # Should ignore the file anyways.
+                                    break
+                            else:  # A valid file: start downloading.
                                 download(file_url, local_name)  # The url of the file and the file name for a reference.
                                 # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
                                 log('%s in %.1f\t: %s\t(%s)' % (checks, download_span, local_name, __get_str_time()))
