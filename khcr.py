@@ -22,7 +22,7 @@ MIN_SCANNING_URL_SPAN = 3
 SCANNING_TIME_SPAN = 2.5  # seconds
 MIN_PAUSE = 1.4
 MAX_PAUSE = 3.2
-SIZE_TOLERANCE = 256  # bytes
+SIZE_TOLERANCE = 128  # bytes
 
 
 def log(message: str):
@@ -111,12 +111,12 @@ def extract_download_target(soup: BeautifulSoup) -> ():
             size_str = dropdown_menus[1].contents[0].split(' : ')[-1].split(' ')[0]
             size = int(size_str.replace(',', ''))
             # The digitized index
-            page_url = __split_on_last_pattern(url, '.')[0]  # Remove the extension from the file url.
+            page_url = remove_extension(url)
             index = __format_url_index(__get_url_index(page_url))  # Convert to the integer index.
             storing_name = '%s-%02d-%s' % (index, int(view_count_digits), name)
         except Exception as e:
             # domain.com/image.jpg -> domain.com/image -> image
-            storing_name = __split_on_last_pattern(url, '.')[0].split('/')[-1]
+            storing_name = remove_extension(url).split('/')[-1]
             size = 0
             log('Error: Cannot retrieve the file data.\t(%s)\n%s' % (__get_str_time(), e))
         return url, storing_name, size
@@ -147,7 +147,7 @@ def upload_image() -> str:
         wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'img-responsive')))
 
         image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
-        uploaded_url = __split_on_last_pattern(image_url, '.')[0]  # domain.com/name
+        uploaded_url = remove_extension(image_url)  # domain.com/name
         log('%s uploaded on %s.\t(%s)' % (file_to_upload.split('/')[-1], uploaded_url, __get_str_time()))
         try:  # Delete the uploaded file.
             browser.find_element(By.XPATH, '/html/body/nav/div/div[2]/ul/li[4]/a').click()
@@ -169,6 +169,10 @@ def __split_on_last_pattern(string: str, pattern: str) -> ():
     leading_chunks = string.split(pattern)[:-1]  # [domain, com/image]
     leading_piece = pattern.join(leading_chunks)  # domain.com/image
     return leading_piece, last_piece  # (domain.com/image, jpg)
+
+
+def remove_extension(string: str) -> str:
+    return __split_on_last_pattern(string, '.')[0]
 
 
 def __get_url_index(url: str) -> []:
@@ -228,7 +232,7 @@ def __get_str_time() -> str:
 
 
 while True:
-    ignored_list_db = sqlite.IgnoreListDatabase()
+    ignored_database = sqlite.IgnoreListDatabase()
     try:
         # Upload a file to get the start of a scanning sequence
         occupied_url = upload_image()
@@ -244,7 +248,7 @@ while True:
         # Time span between successful downloads
         last_downloaded = datetime.datetime.now()
 
-        while not somethings_wrong:
+        while not somethings_wrong:  # Scan a couple of next urls
             if failure_count < MAX_FAILURE:
                 # Set the timer.
                 scan_start_time = datetime.datetime.now()
@@ -275,31 +279,29 @@ while True:
                             download_span = int(__get_elapsed_time(last_downloaded)) / 60
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
-                            file_name_ext = local_name[12:]  # Dropping '19102312-02-'
-                            file_name = __split_on_last_pattern(file_name_ext, '.')[0]  # Dropping the extension
-                            ignore_verdict = False
-                            for ignored_file_name in ignored_list_db.fetch_names():
-                                if ignored_file_name in file_name:  # The uploaded file contains a suspicious pattern.
-                                    uploaded_size = target[2]
-                                    sizes = ignored_list_db.fetch_sizes(ignored_file_name)  # [(3, 2819), (12, 807), ..]
-                                    for j in range(len(sizes)):
-                                        ignored_size = sizes[j][1]  # 2819 from (3, 2819)
-                                        if not ignored_size:  # Null or 0 means unconditional: ignore directly.
-                                            ignore_verdict = True
-                                        elif ignored_size - SIZE_TOLERANCE < uploaded_size < \
-                                                ignored_size + SIZE_TOLERANCE:
-                                            ignore_verdict = True
-                                        else:  # The file name listed, but the size didn't match.
-                                            log('Warning: Should ignore %s with %d bytes? (listed as %d bytes)' %
-                                                (file_name, uploaded_size, ignored_size))
-                                        if ignore_verdict:  # The name and the size matched an item in the list.
-                                            # A valid link, but should be ignored.
-                                            ignored_list_db.increase_count(sizes[j][0])  # 3 from (3, 2819)
+                            # While the link is valid, check the file is in the ignored list.
+                            ignored_list = ignored_database.fetch_ins()
+                            # The information of the uploaded file
+                            name_with_extension = local_name[12:]  # Dropping '19102312-02-'
+                            uploaded_file_name = remove_extension(name_with_extension)
+                            uploaded_size = target[2]
+                            for k, ignored_file in enumerate(ignored_list):
+                                ignored_size = ignored_list[k][2]  # 282719 from (12, aa, 282719)
+                                ignored_pattern = ignored_list[k][1]  # 'aa'
+                                db_id = ignored_list[k][0]  # '12'
+                                if not ignored_size:
+                                    log('Error: The file size has not been specified for %s.' % ignored_pattern)
+                                    ignored_database.unregister(db_id)
+                                else:  # Check the sizes match.
+                                    if ignored_size - SIZE_TOLERANCE < uploaded_size < ignored_size + SIZE_TOLERANCE:
+                                        # The size match.
+                                        # Check the names match then: 'aa' from (3, aa, 282719) in file name?
+                                        if ignored_pattern in uploaded_file_name:
+                                            # A match found. While the link is valid, the file should be ignored.
+                                            ignored_database.increase_count(db_id)
                                             log('%s in %.1f\t: (ignored) %s\t(%s)' %
-                                                (checks, download_span, file_name, __get_str_time()))
-                                            break
-                                if ignore_verdict:  # Should ignore the file anyways.
-                                    break
+                                                (checks, download_span, uploaded_file_name, __get_str_time()))
+                                            break  # Stop matching the sizes.
                             else:  # A valid file: start downloading.
                                 download(file_url, local_name)  # The url of the file and the file name for a reference.
                                 # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
@@ -337,4 +339,4 @@ while True:
     except Exception as main_loop_exception:
         log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
     finally:
-        ignored_list_db.close_connection()
+        ignored_database.close_connection()

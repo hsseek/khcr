@@ -50,9 +50,9 @@ class IgnoreListDatabase:
         self.database.commit()
         cursor.close()
 
-    def unregister_filename(self, filename: str):
+    def unregister(self, db_id: int):
         cursor = self.database.cursor()
-        query = "DELETE FROM %s WHERE %s='%s'" % (Table.NAME, Table.FILENAME, filename)
+        query = "DELETE FROM %s WHERE %s='%s'" % (Table.NAME, Table.ID, db_id)
         cursor.execute(query)
         self.database.commit()
         cursor.close()
@@ -65,18 +65,6 @@ class IgnoreListDatabase:
         cursor.close()
         return items  # (id, filename, size, count, created_at, last_viewed_at)
 
-    def fetch_ids(self, filename: str) -> []:
-        cursor = self.database.cursor()
-        query = "SELECT %s FROM %s " % (Table.ID, Table.NAME) + \
-                "WHERE %s='%s'" % (Table.FILENAME, filename)
-        cursor.execute(query)
-        tuples = cursor.fetchall()
-        cursor.close()
-        db_ids = []
-        for i, db_id in enumerate(tuples):
-            db_ids.append(tuples[i][0])
-        return db_ids
-
     def fetch_names(self) -> []:
         cursor = self.database.cursor()
         query = "SELECT %s FROM %s" % (Table.FILENAME, Table.NAME)
@@ -88,14 +76,15 @@ class IgnoreListDatabase:
             names.append(tuples[i][0])
         return names
 
-    def fetch_sizes(self, filename: str) -> []:
+    def fetch_ins(self, filename: str = None) -> []:  # Returns id, filename, size.
         cursor = self.database.cursor()
-        query = "SELECT %s, %s FROM %s " % (Table.ID, Table.SIZE, Table.NAME) + \
-            "WHERE %s='%s'" % (Table.FILENAME, filename)
+        query = "SELECT %s, %s, %s FROM %s" % (Table.ID, Table.FILENAME, Table.SIZE, Table.NAME)
+        if filename:  # Given a filename, select only files with the name.
+            query += " WHERE %s='%s'" % (Table.FILENAME, filename)
         cursor.execute(query)
-        tuples = cursor.fetchall()  # [(3, 23819), (12, 38027), ...]
+        items = cursor.fetchall()  # [(3, aa, 23819), (12, img, 38027), ...]
         cursor.close()
-        return tuples
+        return items
 
     def close_connection(self):
         self.database.close()
