@@ -240,137 +240,140 @@ class Constants:
     IGNORED_FILENAME_PATTERNS = build_tuple('IGNORED_NAMES.pv')
 
 
-while True:
-    ignored_database = sqlite.IgnoreListDatabase()
-    try:
-        # Upload a file to get the start of a scanning sequence
-        occupied_url = upload_image()
-        url_to_scan = get_next_url(occupied_url)
+if __name__ == "__main__":
+    while True:
+        ignored_database = sqlite.IgnoreListDatabase()
+        try:
+            # Upload a file to get the start of a scanning sequence
+            occupied_url = upload_image()
+            url_to_scan = get_next_url(occupied_url)
 
-        # If fails 1000 times in a row, something must have went wrong.
-        failure_count = 0
-        MAX_FAILURE = 1000
-        somethings_wrong = False
-        detected_in_span = False
-        first_trial_time = datetime.datetime.now()
+            # If fails 1000 times in a row, something must have went wrong.
+            failure_count = 0
+            MAX_FAILURE = 1000
+            somethings_wrong = False
+            detected_in_span = False
+            first_trial_time = datetime.datetime.now()
 
-        # Time span between successful downloads
-        last_downloaded = datetime.datetime.now()
+            # Time span between successful downloads
+            last_downloaded = datetime.datetime.now()
 
-        while not somethings_wrong:  # Scan a couple of next urls
-            if failure_count < MAX_FAILURE:
-                # Set the timer.
-                scan_start_time = datetime.datetime.now()
+            while not somethings_wrong:  # Scan a couple of next urls
+                if failure_count < MAX_FAILURE:
+                    # Set the timer.
+                    scan_start_time = datetime.datetime.now()
 
-                url_to_scan = get_next_url(occupied_url)
-                scanning_url_span = random.randint(Constants.MIN_SCANNING_URL_SPAN, Constants.MAX_SCANNING_URL_SPAN)
-                for i in range(scanning_url_span):
-                    # Retrieve the next url
-                    source = requests.get(url_to_scan).text
-                    target = extract_download_target(BeautifulSoup(source, 'html.parser'))
-                    if target is not None:  # A file has been uploaded on the page. BREAK at the end of it.
-                        occupied_url = url_to_scan  # Mark the url as occupied.
-                        detected_in_span = True  # To reset the failure count.
-                        is_worth = True  # Determine if the file should be downloaded.
+                    url_to_scan = get_next_url(occupied_url)
+                    scanning_url_span = random.randint(Constants.MIN_SCANNING_URL_SPAN, Constants.MAX_SCANNING_URL_SPAN)
+                    for i in range(scanning_url_span):
+                        # Retrieve the next url
+                        source = requests.get(url_to_scan).text
+                        target = extract_download_target(BeautifulSoup(source, 'html.parser'))
+                        if target is not None:  # A file has been uploaded on the page. BREAK at the end of it.
+                            occupied_url = url_to_scan  # Mark the url as occupied.
+                            detected_in_span = True  # To reset the failure count.
+                            is_worth = True  # Determine if the file should be downloaded.
 
-                        file_url = target[0]
-                        local_name = target[1]
-                        if file_url.split('.')[-1] == 'dn':
-                            # Print the span without updating last_downloaded
-                            download_span = int(__get_elapsed_sec(last_downloaded)) / 60
-                            log('[ - ] in %.1f\t: %s-*.dn "삭제된 이미지입니다."\t(%s)' %
-                                (download_span, __split_on_last_pattern(local_name, '-')[0], __get_str_time()))
-                        else:  # A valid link
-                            # Visualization
-                            checks = '['
-                            for j in range(i):
-                                checks += ' -'
-                            checks += ' V ]'
-                            # The minutes spent between consecutive successful downloads
-                            download_span = int(__get_elapsed_sec(last_downloaded)) / 60
-                            last_downloaded = datetime.datetime.now()  # Update for the later use.
+                            file_url = target[0]
+                            local_name = target[1]
+                            if file_url.split('.')[-1] == 'dn':
+                                # Print the span without updating last_downloaded
+                                download_span = int(__get_elapsed_sec(last_downloaded)) / 60
+                                log('[ - ] in %.1f\t: %s-*.dn "삭제된 이미지입니다."\t(%s)' %
+                                    (download_span, __split_on_last_pattern(local_name, '-')[0], __get_str_time()))
+                            else:  # A valid link
+                                # Visualization
+                                checks = '['
+                                for j in range(i):
+                                    checks += ' -'
+                                checks += ' V ]'
+                                # The minutes spent between consecutive successful downloads
+                                download_span = int(__get_elapsed_sec(last_downloaded)) / 60
+                                last_downloaded = datetime.datetime.now()  # Update for the later use.
 
-                            # While the link is valid, check the file is in the ignored list.
-                            # The information of the uploaded file
-                            name_with_extension = local_name[12:]  # Dropping '19102312-02-'
-                            # Uploaded file name, replacing ' ', '.', '/'
-                            uploaded_file_name = remove_extension(name_with_extension)
-                            uploaded_size = target[2]
+                                # While the link is valid, check the file is in the ignored list.
+                                # The information of the uploaded file
+                                name_with_extension = local_name[12:]  # Dropping '19102312-02-'
+                                # Uploaded file name, replacing ' ', '.', '/'
+                                uploaded_file_name = remove_extension(name_with_extension)
+                                uploaded_size = target[2]
 
-                            # Exclude small files.
-                            if uploaded_size < Constants.FILE_SIZE_THRESHOLD:
-                                log('%s in %.1f\t: (ignorable file size) %s\t(%s)' %
-                                    (checks, download_span, uploaded_file_name, __get_str_time()))
-                                is_worth = False
-                                break
+                                # Exclude small files.
+                                if uploaded_size < Constants.FILE_SIZE_THRESHOLD:
+                                    log('%s in %.1f\t: (ignorable file size) %s\t(%s)' %
+                                        (checks, download_span, uploaded_file_name, __get_str_time()))
+                                    is_worth = False
+                                    break
 
-                            # Exclude the file name regardless of file size.
-                            if is_worth:
-                                for ignored_filename_pattern in Constants.IGNORED_FILENAME_PATTERNS:
-                                    if ignored_filename_pattern in uploaded_file_name:
-                                        log('%s in %.1f\t: (ignored filename) %s\t(%s)' %
-                                            (checks, download_span, uploaded_file_name, __get_str_time()))
-                                        is_worth = False
-                                        break
+                                # Exclude the file name regardless of file size.
+                                if is_worth:
+                                    for ignored_filename_pattern in Constants.IGNORED_FILENAME_PATTERNS:
+                                        if ignored_filename_pattern in uploaded_file_name:
+                                            log('%s in %.1f\t: (ignored filename) %s\t(%s)' %
+                                                (checks, download_span, uploaded_file_name, __get_str_time()))
+                                            is_worth = False
+                                            break
 
-                            if is_worth:  # Compare the file name AND the file size from sqlite database.
-                                ignored_files = ignored_database.fetch_ins()
-                                for k, ignored_file in enumerate(ignored_files):
-                                    ignored_size = ignored_files[k][2]  # 282719 from (12, aa, 282719)
-                                    ignored_pattern = ignored_files[k][1]  # 'aa'
-                                    db_id = ignored_files[k][0]  # '12'
-                                    if not ignored_size:
-                                        log('Error: The file size has not been specified for %s.' % ignored_pattern)
-                                        ignored_database.unregister(db_id)
-                                    else:  # Check the sizes match.
-                                        if ignored_size - Constants.SIZE_TOLERANCE \
-                                                < uploaded_size \
-                                                < ignored_size + Constants.SIZE_TOLERANCE:
-                                            # The size match.
-                                            # Check the names match then: 'aa' from (3, aa, 282719) in file name?
-                                            if ignored_pattern in uploaded_file_name:
-                                                # A match found. While the link is valid, the file should be ignored.
-                                                ignored_database.increase_count(db_id)
-                                                log('%s in %.1f\t: (ignored file) %s\t(%s)' %
-                                                    (checks, download_span, uploaded_file_name, __get_str_time(),))
-                                                is_worth = False
-                                                break  # Stop matching the sizes.
+                                if is_worth:  # Compare the file name AND the file size from sqlite database.
+                                    ignored_files = ignored_database.fetch_ins()
+                                    for k, ignored_file in enumerate(ignored_files):
+                                        ignored_size = ignored_files[k][2]  # 282719 from (12, aa, 282719)
+                                        ignored_pattern = ignored_files[k][1]  # 'aa'
+                                        db_id = ignored_files[k][0]  # '12'
+                                        if not ignored_size:
+                                            log('Error: The file size has not been specified for %s.' % ignored_pattern)
+                                            ignored_database.unregister(db_id)
+                                        else:  # Check the sizes match.
+                                            if ignored_size - Constants.SIZE_TOLERANCE \
+                                                    < uploaded_size \
+                                                    < ignored_size + Constants.SIZE_TOLERANCE:
+                                                # The size match.
+                                                # Check the names match then: 'aa' from (3, aa, 282719) in file name?
+                                                if ignored_pattern in uploaded_file_name:
+                                                    # While the link is valid, the file should be ignored.
+                                                    ignored_database.increase_count(db_id)
+                                                    log('%s in %.1f\t: (ignored file) %s\t(%s)' %
+                                                        (checks, download_span, uploaded_file_name, __get_str_time(),))
+                                                    is_worth = False
+                                                    break  # Stop matching the sizes.
 
-                            if is_worth:  # After all, still worth downloading: start downloading.
-                                download(file_url,
-                                         local_name)  # The url of the file and the file name for a reference.
-                                # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
-                                log('%s in %.1f\t: %s\t(%s)' % (checks, download_span, local_name, __get_str_time()))
-                        break  # Scanning span must be shifted.
-                    else:  # Move to the next target in the span.
-                        url_to_scan = get_next_url(url_to_scan)
+                                if is_worth:  # After all, still worth downloading: start downloading.
+                                    download(file_url,
+                                             local_name)  # The url of the file and the file name for a reference.
+                                    # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
+                                    log('%s in %.1f\t: %s\t(%s)' %
+                                        (checks, download_span, local_name, __get_str_time()))
+                            break  # Scanning span must be shifted.
+                        else:  # Move to the next target in the span.
+                            url_to_scan = get_next_url(url_to_scan)
 
-                elapsed_time = __get_elapsed_sec(scan_start_time)
-                time_left = Constants.SCANNING_TIME_SPAN - elapsed_time
-                report = ''
-                # Implement jitter.
-                if time_left > 0:
-                    pause = random.uniform(Constants.MIN_PAUSE, Constants.MAX_PAUSE)
-                    time.sleep(pause)
-                    report += 'Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time)
-                else:
-                    log('\t\t\t\t: Scanned for %.1f"\t(%s)' % (elapsed_time, __get_str_time()))  # Scanning got slower.
+                    elapsed_time = __get_elapsed_sec(scan_start_time)
+                    time_left = Constants.SCANNING_TIME_SPAN - elapsed_time
+                    report = ''
+                    # Implement jitter.
+                    if time_left > 0:
+                        pause = random.uniform(Constants.MIN_PAUSE, Constants.MAX_PAUSE)
+                        time.sleep(pause)
+                        report += 'Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time)
+                    else:
+                        # Scanning got slower.
+                        log('\t\t\t\t: Scanned for %.1f"\t(%s)' % (elapsed_time, __get_str_time()))
 
-                if detected_in_span:
-                    failure_count = 0
-                    detected_in_span = False  # Turn off the switch for the later use.
-                else:
-                    failure_count += 1
-                    report += '\tNothing found over the span of %d.' % scanning_url_span
-                    report += '\tConsecutive failures: %i \t(%s)' % (failure_count, __get_str_time())
-                    print(report)
+                    if detected_in_span:
+                        failure_count = 0
+                        detected_in_span = False  # Turn off the switch for the later use.
+                    else:
+                        failure_count += 1
+                        report += '\tNothing found over the span of %d.' % scanning_url_span
+                        report += '\tConsecutive failures: %i \t(%s)' % (failure_count, __get_str_time())
+                        print(report)
 
-            else:  # Failure count reached the limit. Something went wrong.
-                somethings_wrong = True
-                loop_span = int(__get_elapsed_sec(first_trial_time) / 60)
-                log('Warning: Failed %d times in a row for %d minutes.\t(%s)' % (
-                    MAX_FAILURE, loop_span, __get_str_time()))
-    except Exception as main_loop_exception:
-        log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
-    finally:
-        ignored_database.close_connection()
+                else:  # Failure count reached the limit. Something went wrong.
+                    somethings_wrong = True
+                    loop_span = int(__get_elapsed_sec(first_trial_time) / 60)
+                    log('Warning: Failed %d times in a row for %d minutes.\t(%s)' % (
+                        MAX_FAILURE, loop_span, __get_str_time()))
+        except Exception as main_loop_exception:
+            log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
+        finally:
+            ignored_database.close_connection()
