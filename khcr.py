@@ -279,7 +279,7 @@ if __name__ == "__main__":
                             if file_url.split('.')[-1] == 'dn':
                                 # Print the span without updating last_downloaded
                                 download_span = int(__get_elapsed_sec(last_downloaded)) / 60
-                                log('[ - ] in %.1f\t: %s-*.dn "삭제된 이미지입니다."\t(%s)' %
+                                log('[ - ] in %.1f"\t: %s-*.dn "삭제된 이미지입니다."\t(%s)' %
                                     (download_span, __split_on_last_pattern(local_name, '-')[0], __get_str_time()))
                             else:  # A valid link
                                 # Visualization
@@ -300,7 +300,7 @@ if __name__ == "__main__":
 
                                 # Exclude small files.
                                 if uploaded_size < Constants.FILE_SIZE_THRESHOLD:
-                                    log('%s in %.1f\t: (ignorable file size) %s\t(%s)' %
+                                    log('%s in %.1f"\t: (ignorable file size) %s\t(%s)' %
                                         (checks, download_span, uploaded_file_name, __get_str_time()))
                                     is_worth = False
                                     break
@@ -309,7 +309,7 @@ if __name__ == "__main__":
                                 if is_worth:
                                     for ignored_filename_pattern in Constants.IGNORED_FILENAME_PATTERNS:
                                         if ignored_filename_pattern in uploaded_file_name:
-                                            log('%s in %.1f\t: (ignored filename) %s\t(%s)' %
+                                            log('%s in %.1f"\t: (ignored filename) %s\t(%s)' %
                                                 (checks, download_span, uploaded_file_name, __get_str_time()))
                                             is_worth = False
                                             break
@@ -332,7 +332,7 @@ if __name__ == "__main__":
                                                 if ignored_pattern in uploaded_file_name:
                                                     # While the link is valid, the file should be ignored.
                                                     ignored_database.increase_count(db_id)
-                                                    log('%s in %.1f\t: (ignored file) %s\t(%s)' %
+                                                    log('%s in %.1f"\t: (ignored file) %s\t(%s)' %
                                                         (checks, download_span, uploaded_file_name, __get_str_time(),))
                                                     is_worth = False
                                                     break  # Stop matching the sizes.
@@ -341,7 +341,7 @@ if __name__ == "__main__":
                                     download(file_url,
                                              local_name)  # The url of the file and the file name for a reference.
                                     # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
-                                    log('%s in %.1f\t: %s\t(%s)' %
+                                    log('%s in %.1f"\t: %s\t(%s)' %
                                         (checks, download_span, local_name, __get_str_time()))
                             break  # Scanning span must be shifted.
                         else:  # Move to the next target in the span.
