@@ -98,7 +98,12 @@ def extract_download_target(soup: BeautifulSoup) -> ():
         try:
             # Split at ' : ' rather than remove 'FileName : ' not to be dependent on browser language.
             # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
-            name = dropdown_menus[0].contents[0].split(' : ')[-1].strip().replace(" ", "_")
+            name = dropdown_menus[0].contents[0].split(' : ')[-1].split(".")[-1] \
+                .replace(" ", "_").replace(".", "_").strip()  # The extension might be wrong. Drop the extension.
+            category, extension = requests.session().get(url).headers['Content-Type'].split('/')
+            if category != 'image':
+                log('Error: %s is not an image.' % url)
+
             # The view count
             view_count_str = dropdown_menus[-3].contents[0].split(' : ')[-1].strip()
             view_count_digits = ""
@@ -111,7 +116,8 @@ def extract_download_target(soup: BeautifulSoup) -> ():
             # The digitized index
             page_url = remove_extension(url)
             index = __format_url_index(__get_url_index(page_url))  # Convert to the integer index.
-            storing_name = '%s-%02d-%s' % (index, int(view_count_digits), name)
+
+            storing_name = '%s-%02d-%s' % (index, int(view_count_digits), name + '.' + extension)
         except Exception as e:
             # domain.com/image.jpg -> domain.com/image -> image
             storing_name = remove_extension(url).split('/')[-1]
@@ -274,75 +280,68 @@ if __name__ == "__main__":
                             detected_in_span = True  # To reset the failure count.
                             is_worth = True  # Determine if the file should be downloaded.
 
-                            file_url = target[0]
-                            local_name = target[1]
-                            if file_url.split('.')[-1] == 'dn':
-                                # Print the span without updating last_downloaded
-                                download_span = int(__get_elapsed_sec(last_downloaded)) / 60
-                                log('[ - ] in %.1f"\t: %s-*.dn "삭제된 이미지입니다."\t(%s)' %
-                                    (download_span, __split_on_last_pattern(local_name, '-')[0], __get_str_time()))
-                            else:  # A valid link
-                                # Visualization
-                                checks = '['
-                                for j in range(i):
-                                    checks += ' -'
-                                checks += ' V ]'
-                                # The minutes spent between consecutive successful downloads
-                                download_span = int(__get_elapsed_sec(last_downloaded)) / 60
-                                last_downloaded = datetime.datetime.now()  # Update for the later use.
+                            file_url, local_name, uploaded_size = target
 
-                                # While the link is valid, check the file is in the ignored list.
-                                # The information of the uploaded file
-                                name_with_extension = local_name[12:]  # Dropping '19102312-02-'
-                                # Uploaded file name, replacing ' ', '.', '/'
-                                uploaded_file_name = remove_extension(name_with_extension)
-                                uploaded_size = target[2]
+                            # Visualization
+                            checks = '['
+                            for j in range(i):
+                                checks += ' -'
+                            checks += ' V ]'
+                            # The minutes spent between consecutive successful downloads
+                            download_span = int(__get_elapsed_sec(last_downloaded)) / 60
+                            last_downloaded = datetime.datetime.now()  # Update for the later use.
 
-                                # Exclude small files.
-                                if uploaded_size < Constants.FILE_SIZE_THRESHOLD:
-                                    log('%s in %.1f"\t: (ignorable file size) %s\t(%s)' %
-                                        (checks, download_span, uploaded_file_name, __get_str_time()))
-                                    is_worth = False
-                                    break
+                            # While the link is valid, check the file is in the ignored list.
+                            # The information of the uploaded file
+                            name_with_extension = local_name[12:]  # Dropping '19102312-02-'
+                            # Uploaded file name, replacing ' ', '.', '/'
+                            uploaded_file_name = remove_extension(name_with_extension)
 
-                                # Exclude the file name regardless of file size.
-                                if is_worth:
-                                    for ignored_filename_pattern in Constants.IGNORED_FILENAME_PATTERNS:
-                                        if ignored_filename_pattern in uploaded_file_name:
-                                            log('%s in %.1f"\t: (ignored filename) %s\t(%s)' %
-                                                (checks, download_span, uploaded_file_name, __get_str_time()))
-                                            is_worth = False
-                                            break
+                            # Exclude small files.
+                            if uploaded_size < Constants.FILE_SIZE_THRESHOLD:
+                                log('%s in %.1f"\t: (ignorable file size) %s\t(%s)' %
+                                    (checks, download_span, uploaded_file_name, __get_str_time()))
+                                is_worth = False
+                                break
 
-                                if is_worth:  # Compare the file name AND the file size from sqlite database.
-                                    ignored_files = ignored_database.fetch_ins()
-                                    for k, ignored_file in enumerate(ignored_files):
-                                        ignored_size = ignored_files[k][2]  # 282719 from (12, aa, 282719)
-                                        ignored_pattern = ignored_files[k][1]  # 'aa'
-                                        db_id = ignored_files[k][0]  # '12'
-                                        if not ignored_size:
-                                            log('Error: The file size has not been specified for %s.' % ignored_pattern)
-                                            ignored_database.unregister(db_id)
-                                        else:  # Check the sizes match.
-                                            if ignored_size - Constants.SIZE_TOLERANCE \
-                                                    < uploaded_size \
-                                                    < ignored_size + Constants.SIZE_TOLERANCE:
-                                                # The size match.
-                                                # Check the names match then: 'aa' from (3, aa, 282719) in file name?
-                                                if ignored_pattern in uploaded_file_name:
-                                                    # While the link is valid, the file should be ignored.
-                                                    ignored_database.increase_count(db_id)
-                                                    log('%s in %.1f"\t: (ignored file) %s\t(%s)' %
-                                                        (checks, download_span, uploaded_file_name, __get_str_time(),))
-                                                    is_worth = False
-                                                    break  # Stop matching the sizes.
+                            # Exclude the file name regardless of file size.
+                            if is_worth:
+                                for ignored_filename_pattern in Constants.IGNORED_FILENAME_PATTERNS:
+                                    if ignored_filename_pattern in uploaded_file_name:
+                                        log('%s in %.1f"\t: (ignored filename) %s\t(%s)' %
+                                            (checks, download_span, uploaded_file_name, __get_str_time()))
+                                        is_worth = False
+                                        break
 
-                                if is_worth:  # After all, still worth downloading: start downloading.
-                                    download(file_url,
-                                             local_name)  # The url of the file and the file name for a reference.
-                                    # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
-                                    log('%s in %.1f"\t: %s\t(%s)' %
-                                        (checks, download_span, local_name, __get_str_time()))
+                            if is_worth:  # Compare the file name AND the file size from sqlite database.
+                                ignored_files = ignored_database.fetch_ins()
+                                for k, ignored_file in enumerate(ignored_files):
+                                    ignored_size = ignored_files[k][2]  # 282719 from (12, aa, 282719)
+                                    ignored_pattern = ignored_files[k][1]  # 'aa'
+                                    db_id = ignored_files[k][0]  # '12'
+                                    if not ignored_size:
+                                        log('Error: The file size has not been specified for %s.' % ignored_pattern)
+                                        ignored_database.unregister(db_id)
+                                    else:  # Check the sizes match.
+                                        if ignored_size - Constants.SIZE_TOLERANCE \
+                                                < uploaded_size \
+                                                < ignored_size + Constants.SIZE_TOLERANCE:
+                                            # The size match.
+                                            # Check the names match then: 'aa' from (3, aa, 282719) in file name?
+                                            if ignored_pattern in uploaded_file_name:
+                                                # While the link is valid, the file should be ignored.
+                                                ignored_database.increase_count(db_id)
+                                                log('%s in %.1f"\t: (ignored file) %s\t(%s)' %
+                                                    (checks, download_span, uploaded_file_name, __get_str_time(),))
+                                                is_worth = False
+                                                break  # Stop matching the sizes.
+
+                            if is_worth:  # After all, still worth downloading: start downloading.
+                                download(file_url,
+                                         local_name)  # The url of the file and the file name for a reference.
+                                # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
+                                log('%s in %.1f"\t: %s\t(%s)' %
+                                    (checks, download_span, local_name, __get_str_time()))
                             break  # Scanning span must be shifted.
                         else:  # Move to the next target in the span.
                             url_to_scan = get_next_url(url_to_scan)
