@@ -85,6 +85,15 @@ def __get_elapsed_sec(start_time) -> float:
     return (end_time - start_time).total_seconds()
 
 
+def format_file_name(name: str):
+    safe_char = '_'
+    nice_name = name
+    for char in Constants.PROHIBITED_CHAR:
+        nice_name = nice_name.strip(char)
+        nice_name = nice_name.replace(char, safe_char)
+    return nice_name
+
+
 def extract_download_target(soup: BeautifulSoup) -> ():
     # If the image is still available.
     # Retrieve the image url
@@ -98,8 +107,8 @@ def extract_download_target(soup: BeautifulSoup) -> ():
         try:
             # Split at ' : ' rather than remove 'FileName : ' not to be dependent on browser language.
             # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
-            name = dropdown_menus[0].contents[0].split(' : ')[-1].split(".")[-1] \
-                .replace(" ", "_").replace(".", "_").strip()  # The extension might be wrong. Drop the extension.
+            name = dropdown_menus[0].contents[0].split(' : ')[-1]
+            formatted_name = format_file_name(remove_extension(name))
             category, extension = requests.session().get(url).headers['Content-Type'].split('/')
             if category != 'image':
                 log('Error: %s is not an image.' % url)
@@ -117,7 +126,7 @@ def extract_download_target(soup: BeautifulSoup) -> ():
             page_url = remove_extension(url)
             index = __format_url_index(__get_url_index(page_url))  # Convert to the integer index.
 
-            storing_name = '%s-%02d-%s' % (index, int(view_count_digits), name + '.' + extension)
+            storing_name = '%s-%02d-%s' % (index, int(view_count_digits), formatted_name + '.' + extension)
         except Exception as e:
             # domain.com/image.jpg -> domain.com/image -> image
             storing_name = remove_extension(url).split('/')[-1]
@@ -244,6 +253,7 @@ class Constants:
     MAX_PAUSE = 3.2
     SIZE_TOLERANCE = 128  # bytes
     IGNORED_FILENAME_PATTERNS = build_tuple('IGNORED_NAMES.pv')
+    PROHIBITED_CHAR = (' ', '.', ',', ';', ':')
 
 
 if __name__ == "__main__":
@@ -337,11 +347,9 @@ if __name__ == "__main__":
                                                 break  # Stop matching the sizes.
 
                             if is_worth:  # After all, still worth downloading: start downloading.
-                                download(file_url,
-                                         local_name)  # The url of the file and the file name for a reference.
+                                download(file_url, local_name)  # The url of the file and the file name for a reference.
                                 # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
-                                log('%s in %.1f"\t: %s\t(%s)' %
-                                    (checks, download_span, local_name, __get_str_time()))
+                                log('%s in %.1f"\t: %s\t(%s)' % (checks, download_span, local_name, __get_str_time()))
                             break  # Scanning span must be shifted.
                         else:  # Move to the next target in the span.
                             url_to_scan = get_next_url(url_to_scan)
