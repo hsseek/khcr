@@ -107,20 +107,20 @@ def extract_download_target(soup: BeautifulSoup) -> ():
         try:
             # Split at ' : ' rather than remove 'FileName : ' not to be dependent on browser language.
             # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
-            name = dropdown_menus[0].contents[0].split(' : ')[-1]
+            name = dropdown_menus[0].string.split(' : ')[-1]
             formatted_name = format_file_name(remove_extension(name))
             category, extension = requests.session().get(url).headers['Content-Type'].split('/')
             if category != 'image':
                 log('Error: %s is not an image.' % url)
 
             # The view count
-            view_count_str = dropdown_menus[-3].contents[0].split(' : ')[-1].strip()
+            view_count_str = dropdown_menus[-3].string.split(' : ')[-1].strip()
             view_count_digits = ""
             for char in view_count_str:
                 if char.isdigit():
                     view_count_digits += char
             # The size
-            size_str = dropdown_menus[1].contents[0].split(' : ')[-1].split(' ')[0]
+            size_str = dropdown_menus[1].string.split(' : ')[-1].split(' ')[0]
             size = int(size_str.replace(',', ''))
             # The digitized index
             page_url = remove_extension(url)
