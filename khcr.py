@@ -1,7 +1,7 @@
 import traceback
 
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
+# from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions
@@ -136,13 +136,13 @@ def extract_download_target(soup: BeautifulSoup) -> ():
 
 
 def upload_image() -> str:
-    # A chrome web driver with headless option
-    service = Service(Path.DRIVER_PATH)
+    # A Chrome web driver with headless option
+    # service = Service(Path.DRIVER_PATH)
     options = webdriver.ChromeOptions()
     options.add_argument('headless')
     options.add_argument('disable-gpu')
     # options.add_experimental_option("detach", True)  # TEST
-    browser = webdriver.Chrome(service=service, options=options)
+    browser = webdriver.Chrome(executable_path=Path.DRIVER_PATH, options=options)
     wait = WebDriverWait(browser, timeout=5)
     try:  # Open the browser and upload the last image.
         browser.get(Path.ROOT_DOMAIN)
@@ -264,7 +264,7 @@ if __name__ == "__main__":
             occupied_url = upload_image()
             url_to_scan = get_next_url(occupied_url)
 
-            # If fails 1000 times in a row, something must have went wrong.
+            # If fails 1000 times in a row, something must have gone wrong.
             failure_count = 0
             MAX_FAILURE = 1000
             somethings_wrong = False
