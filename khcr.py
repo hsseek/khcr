@@ -14,9 +14,6 @@ import datetime
 from shutil import copyfile
 import glob
 
-# Regarding scanning
-import sqlite
-
 
 def log(message: str):
     with open(Path.LOG_PATH, 'a') as f:
@@ -258,7 +255,6 @@ class Constants:
 
 if __name__ == "__main__":
     while True:
-        ignored_database = sqlite.IgnoreListDatabase()
         try:
             # Upload a file to get the start of a scanning sequence
             occupied_url = upload_image()
@@ -323,29 +319,6 @@ if __name__ == "__main__":
                                         is_worth = False
                                         break
 
-                            if is_worth:  # Compare the file name AND the file size from sqlite database.
-                                ignored_files = ignored_database.fetch_ins()
-                                for k, ignored_file in enumerate(ignored_files):
-                                    ignored_size = ignored_files[k][2]  # 282719 from (12, aa, 282719)
-                                    ignored_pattern = ignored_files[k][1]  # 'aa'
-                                    db_id = ignored_files[k][0]  # '12'
-                                    if not ignored_size:
-                                        log('Error: The file size has not been specified for %s.' % ignored_pattern)
-                                        ignored_database.unregister(db_id)
-                                    else:  # Check the sizes match.
-                                        if ignored_size - Constants.SIZE_TOLERANCE \
-                                                < uploaded_size \
-                                                < ignored_size + Constants.SIZE_TOLERANCE:
-                                            # The size match.
-                                            # Check the names match then: 'aa' from (3, aa, 282719) in file name?
-                                            if ignored_pattern in uploaded_file_name:
-                                                # While the link is valid, the file should be ignored.
-                                                ignored_database.increase_count(db_id)
-                                                log('%s in %.1f"\t: (ignored file) %s\t(%s)' %
-                                                    (checks, download_span, uploaded_file_name, __get_str_time(),))
-                                                is_worth = False
-                                                break  # Stop matching the sizes.
-
                             if is_worth:  # After all, still worth downloading: start downloading.
                                 download(file_url, local_name)  # The url of the file and the file name for a reference.
                                 # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
@@ -382,5 +355,3 @@ if __name__ == "__main__":
                         MAX_FAILURE, loop_span, __get_str_time()))
         except Exception as main_loop_exception:
             log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
-        finally:
-            ignored_database.close_connection()
