@@ -15,8 +15,10 @@ from shutil import copyfile
 import glob
 
 
-def log(message: str):
-    with open(Path.LOG_PATH, 'a') as f:
+def log(message: str, has_tst: bool = True):
+    with open(Constants.LOG_PATH, 'a') as f:
+        if has_tst:
+            message += '\t(%s)' % __get_str_time()
         f.write(message + '\n')
     print(message)
 
@@ -31,15 +33,22 @@ def build_tuple(path: str):
     return tuple(content.split('\n'))
 
 
+def build_tuple_of_tuples(path: str):
+    lines = build_tuple(path)
+    info = []
+    for line in lines:
+        info.append(tuple(line.split(',')))
+    return tuple(info)
+
+
 def download(url: str, file_name: str):
     # Set the absolute path to store the downloaded file.
-    download_path = Path.DOWNLOAD_PATH
-    if not os.path.exists(download_path):
-        os.makedirs(download_path)  # create folder if it does not exist
+    if not os.path.exists(Constants.DOWNLOAD_PATH):
+        os.makedirs(Constants.DOWNLOAD_PATH)  # create folder if it does not exist
 
     # Set the download target.
     r = requests.get(url, stream=True)
-    file_path = os.path.join(download_path, file_name)
+    file_path = os.path.join(Constants.DOWNLOAD_PATH, file_name)
     if r.ok:
         with open(file_path, 'wb') as f:
             for chunk in r.iter_content(chunk_size=1024 * 8):
@@ -49,32 +58,22 @@ def download(url: str, file_name: str):
                     os.fsync(f.fileno())
         backup(file_path)
     else:  # HTTP status code 4XX/5XX
-        log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text) + ' (%s)' % __get_str_time)
+        log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text))
 
 
 def backup(file_path: str):
     try:
-        backup_path = Path.BACKUP_PATH
         copied_file_name = file_path.split('/')[-1].split('-')[-1]  # path/index-filename.png -> filename.png
         if copied_file_name.startswith('.'):  # glob won't detect hidden files with '/*'.
             copied_file_name = str(random.randint(0, 9)) + copied_file_name
 
         # Remove the previous file(s) and copy the new file.
-        previous_files = glob.glob(Path.BACKUP_PATH + '*')
+        previous_files = glob.glob(Constants.BACKUP_PATH + '*')
         for file in previous_files:
             os.remove(file)
-        copyfile(file_path, backup_path + copied_file_name)
+        copyfile(file_path, Constants.BACKUP_PATH + copied_file_name)
     except Exception as e:
-        log('Error: Backup went wrong. Do not change the record.\t(%s)\n(%s)' % (__get_str_time(), e))
-
-
-class Path:
-    # urls and paths in String
-    DRIVER_PATH = read_from_file('DRIVER_PATH.pv')
-    ROOT_DOMAIN = read_from_file('ROOT_DOMAIN.pv')
-    DOWNLOAD_PATH = read_from_file('DOWNLOAD_PATH.pv')
-    BACKUP_PATH = read_from_file('BACKUP_PATH.pv')
-    LOG_PATH = read_from_file('LOG_PATH.pv')
+        log('Error: Backup went wrong. Do not change the record.(%s)' % e)
 
 
 def __get_elapsed_sec(start_time) -> float:
@@ -128,7 +127,7 @@ def extract_download_target(soup: BeautifulSoup) -> ():
             # domain.com/image.jpg -> domain.com/image -> image
             storing_name = remove_extension(url).split('/')[-1]
             size = 0
-            log('Error: Cannot retrieve the file data.\t(%s)\n%s' % (__get_str_time(), e))
+            log('Error: Cannot retrieve the file data.(%s)' % e)
         return url, storing_name, size
 
 
@@ -139,18 +138,18 @@ def upload_image() -> str:
     options.add_argument('headless')
     options.add_argument('disable-gpu')
     # options.add_experimental_option("detach", True)  # TEST
-    browser = webdriver.Chrome(executable_path=Path.DRIVER_PATH, options=options)
+    browser = webdriver.Chrome(executable_path=Constants.DRIVER_PATH, options=options)
     wait = WebDriverWait(browser, timeout=5)
     try:  # Open the browser and upload the last image.
-        browser.get(Path.ROOT_DOMAIN)
-        files_to_upload = glob.glob(Path.BACKUP_PATH + '*')  # Should be len() = 1
+        browser.get(Constants.ROOT_DOMAIN)
+        files_to_upload = glob.glob(Constants.BACKUP_PATH + '*')  # Should be len() = 1
         if not files_to_upload:  # Empty
-            log('Error: The last backup not available.\t(%s)' % __get_str_time())
-            stored_files = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')
+            log('Error: The last backup not available.')
+            stored_files = glob.glob(Constants.DOWNLOAD_PATH + '*.jpg')
             # Pick a random file among stored files.
-            file_to_upload = glob.glob(Path.DOWNLOAD_PATH + '*.jpg')[random.randint(0, len(stored_files) - 1)]
+            file_to_upload = glob.glob(Constants.DOWNLOAD_PATH + '*.jpg')[random.randint(0, len(stored_files) - 1)]
             stored_file_name = file_to_upload.split('/')[-1]
-            copyfile(file_to_upload, Path.BACKUP_PATH + stored_file_name)
+            copyfile(file_to_upload, Constants.BACKUP_PATH + stored_file_name)
         else:
             file_to_upload = files_to_upload[0]
         browser.find_element(By.XPATH, '//*[@id="media_up_btn"]').send_keys(file_to_upload)
@@ -158,17 +157,17 @@ def upload_image() -> str:
 
         image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
         uploaded_url = remove_extension(image_url)  # domain.com/name
-        log('%s uploaded on %s.\t(%s)' % (file_to_upload.split('/')[-1], uploaded_url, __get_str_time()))
+        log('%s uploaded on %s.' % (file_to_upload.split('/')[-1], uploaded_url))
         try:  # Delete the uploaded file.
             browser.find_element(By.XPATH, '/html/body/nav/div/div[2]/ul/li[4]/a').click()
             wait.until(expected_conditions.alert_is_present())
             browser.switch_to.alert.accept()
             wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'page-wrapper')))
         except Exception as alert_exception:
-            log('Error: Cannot delete the uploaded seed.(%s)\t(%s)' % (alert_exception, __get_str_time()))
+            log('Error: Cannot delete the uploaded seed.(%s)' % alert_exception)
         return uploaded_url
     except Exception as upload_exception:
-        log('Error: Cannot upload seed.(%s)\t(%s)' % (upload_exception, __get_str_time()))
+        log('Error: Cannot upload seed.(%s)' % upload_exception)
     finally:
         browser.quit()
 
@@ -242,15 +241,15 @@ def __get_str_time() -> str:
 
 
 class Constants:
-    FILE_SIZE_THRESHOLD = 12000  # 12 KB
     MAX_SCANNING_URL_SPAN = 5
     MIN_SCANNING_URL_SPAN = 3
     SCANNING_TIME_SPAN = 2.5  # seconds
     MIN_PAUSE = 1.4
     MAX_PAUSE = 3.2
-    SIZE_TOLERANCE = 128  # bytes
-    IGNORED_FILENAME_PATTERNS = build_tuple('IGNORED_NAMES.pv')
+    IGNORED_FILENAME_PATTERNS, FILE_SIZE_THRESHOLD = build_tuple_of_tuples('IGNORE.pv')
     PROHIBITED_CHAR = (' ', '.', ',', ';', ':')
+    ROOT_DOMAIN = read_from_file('ROOT_DOMAIN.pv')
+    DRIVER_PATH, DOWNLOAD_PATH, BACKUP_PATH, LOG_PATH = build_tuple('LOCAL_PATHS.pv')
 
 
 if __name__ == "__main__":
@@ -272,8 +271,8 @@ if __name__ == "__main__":
 
             while not somethings_wrong:  # Scan a couple of next urls
                 if failure_count < MAX_FAILURE:
-                    # Set the timer.
-                    scan_start_time = datetime.datetime.now()
+                    scan_start_time = datetime.datetime.now()  # Set the timer.
+                    ignored_msg = ''  # For logging, in case.
 
                     url_to_scan = get_next_url(occupied_url)
                     scanning_url_span = random.randint(Constants.MIN_SCANNING_URL_SPAN, Constants.MAX_SCANNING_URL_SPAN)
@@ -286,43 +285,53 @@ if __name__ == "__main__":
                             detected_in_span = True  # To reset the failure count.
                             is_worth = True  # Determine if the file should be downloaded.
 
-                            file_url, local_name, uploaded_size = target
-
                             # Visualization
                             checks = '['
                             for j in range(i):
                                 checks += ' -'
                             checks += ' V ]'
+
                             # The minutes spent between consecutive successful downloads
                             download_span = int(__get_elapsed_sec(last_downloaded)) / 60
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
-                            # While the link is valid, check the file is in the ignored list.
-                            # The information of the uploaded file
-                            name_with_extension = local_name[12:]  # Dropping '19102312-02-'
-                            # Uploaded file name, replacing ' ', '.', '/'
-                            uploaded_file_name = remove_extension(name_with_extension)
+                            file_url, local_name, uploaded_size = target
+                            uploaded_name = remove_extension(local_name[12:])  # Dropping '19102312-02-'
 
-                            # Exclude small files.
-                            if uploaded_size < Constants.FILE_SIZE_THRESHOLD:
-                                log('%s in %.1f"\t: (ignorable file size) %s\t(%s)' %
-                                    (checks, download_span, uploaded_file_name, __get_str_time()))
+                            # The cases in which the page occupied(so the span should be shifted),
+                            # but should not download the file.
+                            # 1. A wrong format.
+                            if file_url.endswith('.dn'):
+                                ignored_msg = 'A wrong format'
                                 is_worth = False
-                                break
+                            # 2. Suspiciously small files
+                            elif uploaded_size < int(Constants.FILE_SIZE_THRESHOLD[0]):
+                                for reload_count in range(5):
+                                    if uploaded_size == 0 or not uploaded_name:
+                                        # The image has not been properly loaded.
+                                        time.sleep(1)
+                                    else:  # Loaded, and turned out that actually small.
+                                        ignored_msg = 'ignorable file size'
+                                        is_worth = False
+                                        break
+                                else:
+                                    log('Warning: Timeout reached.')
+                                    # Can't conclude it is not worth downloading. Try downloading.
 
-                            # Exclude the file name regardless of file size.
+                            # 3. Files with suspicious names
                             if is_worth:
                                 for ignored_filename_pattern in Constants.IGNORED_FILENAME_PATTERNS:
-                                    if ignored_filename_pattern in uploaded_file_name:
-                                        log('%s in %.1f"\t: (ignored filename) %s\t(%s)' %
-                                            (checks, download_span, uploaded_file_name, __get_str_time()))
+                                    if ignored_filename_pattern in uploaded_name:
+                                        ignored_msg = '\'%s\' included in the name' % ignored_filename_pattern
                                         is_worth = False
                                         break
 
                             if is_worth:  # After all, still worth downloading: start downloading.
-                                download(file_url, local_name)  # The url of the file and the file name for a reference.
+                                download(file_url, local_name)
                                 # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
-                                log('%s in %.1f"\t: %s\t(%s)' % (checks, download_span, local_name, __get_str_time()))
+                                log('%s in %.1f"\t: %s' % (checks, download_span, local_name))
+                            else:
+                                log('%s in %.1f"\t: (%s) %s' % (checks, download_span, ignored_msg, uploaded_name))
                             break  # Scanning span must be shifted.
                         else:  # Move to the next target in the span.
                             url_to_scan = get_next_url(url_to_scan)
@@ -334,24 +343,23 @@ if __name__ == "__main__":
                     if time_left > 0:
                         pause = random.uniform(Constants.MIN_PAUSE, Constants.MAX_PAUSE)
                         time.sleep(pause)
-                        report += 'Scanned for %.1f(%.1f)' % ((pause + elapsed_time), elapsed_time)
+                        report += '%.1f(%.1f)\"' % ((pause + elapsed_time), elapsed_time)
                     else:
                         # Scanning got slower.
-                        log('\t\t\t\t: Scanned for %.1f"\t(%s)' % (elapsed_time, __get_str_time()))
+                        log('\t\t\t\t: Scanned for %.1f"' % elapsed_time)
 
                     if detected_in_span:
                         failure_count = 0
                         detected_in_span = False  # Turn off the switch for the later use.
                     else:
                         failure_count += 1
-                        report += '\tNothing found over the span of %d.' % scanning_url_span
-                        report += '\tConsecutive failures: %i \t(%s)' % (failure_count, __get_str_time())
+                        report += '\tNothing over a span of %d.' % scanning_url_span
+                        report += '\tConsecutive failures: %i' % failure_count
                         print(report)
 
                 else:  # Failure count reached the limit. Something went wrong.
                     somethings_wrong = True
                     loop_span = int(__get_elapsed_sec(first_trial_time) / 60)
-                    log('Warning: Failed %d times in a row for %d minutes.\t(%s)' % (
-                        MAX_FAILURE, loop_span, __get_str_time()))
+                    log('Warning: Failed %d times in a row for %d minutes.' % (MAX_FAILURE, loop_span))
         except Exception as main_loop_exception:
-            log('Error: %s\t%s\n[Traceback]\n%s' % (main_loop_exception, __get_str_time(), traceback.format_exc()))
+            log('Error: %s\n[Traceback]\n%s' % (main_loop_exception, traceback.format_exc()))
