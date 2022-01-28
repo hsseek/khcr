@@ -41,24 +41,30 @@ def build_tuple_of_tuples(path: str):
     return tuple(info)
 
 
-def download(url: str, file_name: str):
-    # Set the absolute path to store the downloaded file.
-    if not os.path.exists(Constants.DOWNLOAD_PATH):
-        os.makedirs(Constants.DOWNLOAD_PATH)  # create folder if it does not exist
+def download(url: str, file_name: str) -> bool:
+    try:
+        # Set the absolute path to store the downloaded file.
+        if not os.path.exists(Constants.DOWNLOAD_PATH):
+            os.makedirs(Constants.DOWNLOAD_PATH)  # create folder if it does not exist
 
-    # Set the download target.
-    r = requests.get(url, stream=True)
-    file_path = os.path.join(Constants.DOWNLOAD_PATH, file_name)
-    if r.ok:
-        with open(file_path, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=1024 * 8):
-                if chunk:
-                    f.write(chunk)
-                    f.flush()
-                    os.fsync(f.fileno())
-        backup(file_path)
-    else:  # HTTP status code 4XX/5XX
-        log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text))
+        # Set the download target.
+        r = requests.get(url, stream=True)
+        file_path = os.path.join(Constants.DOWNLOAD_PATH, file_name)
+        if r.ok:
+            with open(file_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024 * 8):
+                    if chunk:
+                        f.write(chunk)
+                        f.flush()
+                        os.fsync(f.fileno())
+            backup(file_path)
+            return True
+        else:  # HTTP status code 4XX/5XX
+            log("Error: Download failed.(status code {}\n{})".format(r.status_code, r.text))
+            return False
+    except Exception as download_exception:
+        log('Error: Download exception(%s).' % download_exception)
+        return False
 
 
 def backup(file_path: str):
@@ -73,7 +79,7 @@ def backup(file_path: str):
             os.remove(file)
         copyfile(file_path, Constants.BACKUP_PATH + copied_file_name)
     except Exception as e:
-        log('Error: Backup went wrong. Do not change the record.(%s)' % e)
+        log('Error: Backup went wrong(%s).' % e)
 
 
 def __get_elapsed_sec(start_time) -> float:
@@ -83,7 +89,11 @@ def __get_elapsed_sec(start_time) -> float:
 
 def format_file_name(name: str):
     safe_char = '_'
+    char_limit = 80
     nice_name = name
+    if len(nice_name) > char_limit:
+        nice_name = name[-char_limit:]
+        print('Truncated a long file name: %s' % nice_name)
     for char in Constants.PROHIBITED_CHAR:
         nice_name = nice_name.strip(char)
         nice_name = nice_name.replace(char, safe_char)
@@ -136,8 +146,7 @@ def upload_image() -> str:
     # service = Service(Path.DRIVER_PATH)
     options = webdriver.ChromeOptions()
     options.add_argument('headless')
-    options.add_argument('disable-gpu')
-    # options.add_experimental_option("detach", True)  # TEST
+    # options.add_experimental_option("detach", True)
     browser = webdriver.Chrome(executable_path=Constants.DRIVER_PATH, options=options)
     wait = WebDriverWait(browser, timeout=5)
     try:  # Open the browser and upload the last image.
@@ -155,7 +164,8 @@ def upload_image() -> str:
         browser.find_element(By.XPATH, '//*[@id="media_up_btn"]').send_keys(file_to_upload)
         wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'img-responsive')))
 
-        image_url = extract_download_target(BeautifulSoup(browser.page_source, 'html.parser'))[0]  # domain.com/img.jpg
+        # domain.com/img.jpg
+        image_url = extract_download_target(BeautifulSoup(browser.page_source, Constants.HTML_PARSER))[0]
         uploaded_url = remove_extension(image_url)  # domain.com/name
         log('%s uploaded on %s.' % (file_to_upload.split('/')[-1], uploaded_url))
         try:  # Delete the uploaded file.
@@ -241,11 +251,13 @@ def __get_str_time() -> str:
 
 
 class Constants:
+    HTML_PARSER = 'html.parser'
     MAX_SCANNING_URL_SPAN = 5
     MIN_SCANNING_URL_SPAN = 3
     SCANNING_TIME_SPAN = 2.5  # seconds
     MIN_PAUSE = 1.4
     MAX_PAUSE = 3.2
+    RELOAD_LIMIT = 8
     IGNORED_FILENAME_PATTERNS, FILE_SIZE_THRESHOLD = build_tuple_of_tuples('IGNORE.pv')
     PROHIBITED_CHAR = (' ', '.', ',', ';', ':')
     ROOT_DOMAIN = read_from_file('ROOT_DOMAIN.pv')
@@ -279,7 +291,7 @@ if __name__ == "__main__":
                     for i in range(scanning_url_span):
                         # Retrieve the next url
                         source = requests.get(url_to_scan).text
-                        target = extract_download_target(BeautifulSoup(source, 'html.parser'))
+                        target = extract_download_target(BeautifulSoup(source, Constants.HTML_PARSER))
                         if target is not None:  # A file has been uploaded on the page. BREAK at the end of it.
                             occupied_url = url_to_scan  # Mark the url as occupied.
                             detected_in_span = True  # To reset the failure count.
@@ -296,42 +308,54 @@ if __name__ == "__main__":
                             last_downloaded = datetime.datetime.now()  # Update for the later use.
 
                             file_url, local_name, uploaded_size = target
-                            uploaded_name = remove_extension(local_name[12:])  # Dropping '19102312-02-'
+                            uploaded_name = local_name[12:]  # Dropping '19102312-02-'
 
-                            # The cases in which the page occupied(so the span should be shifted),
-                            # but should not download the file.
-                            # 1. A wrong format.
-                            if file_url.endswith('.dn'):
-                                ignored_msg = 'A wrong format'
-                                is_worth = False
-                            # 2. Suspiciously small files
-                            elif uploaded_size < int(Constants.FILE_SIZE_THRESHOLD[0]):
-                                for reload_count in range(5):
-                                    if uploaded_size == 0 or not uploaded_name:
-                                        # The image has not been properly loaded.
-                                        time.sleep(1)
-                                    else:  # Loaded, and turned out that actually small.
-                                        ignored_msg = 'ignorable file size'
-                                        is_worth = False
-                                        break
+                            # The page occupied(so the span should be shifted), inspect the occupying file.
+                            # 0. Prepare a well-defined file target.
+                            for reload_count in range(Constants.RELOAD_LIMIT):
+                                if uploaded_size > 0 and uploaded_name:
+                                    break
                                 else:
-                                    log('Warning: Timeout reached.')
-                                    # Can't conclude it is not worth downloading. Try downloading.
+                                    # The image has not been properly loaded.
+                                    log('Warning: The file cannot be specified. (%d/%d)'
+                                        % (reload_count + 1, Constants.RELOAD_LIMIT))  # test
+                                    time.sleep(1)
+                                    # Reload the page.
+                                    source = requests.get(url_to_scan).text
+                                    file_url, local_name, uploaded_size = \
+                                        extract_download_target(BeautifulSoup(source, Constants.HTML_PARSER))
+                            else:  # No name, no size even after reload limit.
+                                log('Warning: Timeout reached.')
+                                # Even though, cannot conclude it is not worth downloading. Don't turn down, unless...
+                                if file_url.endswith('.dn'):
+                                    # Assume that the file is in a wrong format.
+                                    ignored_msg = 'A wrong format'
+                                    is_worth = False
 
-                            # 3. Files with suspicious names
+                            # Filter files.
+                            # 1. Suspiciously small files
+                            if is_worth:
+                                if uploaded_size < int(Constants.FILE_SIZE_THRESHOLD[0]):
+                                    ignored_msg = 'Too small(%s)' % uploaded_size
+                                    is_worth = False
+
+                            # 2. Files with suspicious names
                             if is_worth:
                                 for ignored_filename_pattern in Constants.IGNORED_FILENAME_PATTERNS:
-                                    if ignored_filename_pattern in uploaded_name:
-                                        ignored_msg = '\'%s\' included in the name' % ignored_filename_pattern
+                                    if ignored_filename_pattern in remove_extension(uploaded_name):
+                                        ignored_msg = '\'%s\' included' % ignored_filename_pattern
                                         is_worth = False
                                         break
 
-                            if is_worth:  # After all, still worth downloading: start downloading.
-                                download(file_url, local_name)
-                                # [ V ] in 2.3  : filename.jpg  (2021-01-23 12:34:56)
-                                log('%s in %.1f"\t: %s' % (checks, download_span, local_name))
+                            # After all, still worth downloading: start downloading.
+                            if is_worth:
+                                dl_successful = download(file_url, local_name)
+                                if dl_successful:
+                                    # [ V ] in 2.3"  : filename.jpg
+                                    log('%s in %.1f"\t: %s' % (checks, download_span, local_name))
                             else:
-                                log('%s in %.1f"\t: (%s) %s' % (checks, download_span, ignored_msg, uploaded_name))
+                                log('%s in %.1f"\t: (ignored: %s) %s' %
+                                    (checks, download_span, ignored_msg, uploaded_name))
                             break  # Scanning span must be shifted.
                         else:  # Move to the next target in the span.
                             url_to_scan = get_next_url(url_to_scan)
