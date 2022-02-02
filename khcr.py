@@ -41,6 +41,23 @@ def build_tuple_of_tuples(path: str):
     return tuple(info)
 
 
+def trim_logs(log_file_path: str):
+    lines_threshold = 65536
+    old_lines = 8192
+
+    if not os.path.isfile(log_file_path):
+        print('Warning: The file does not exist.')
+        return
+
+    with open(log_file_path, 'r') as fin:
+        data = fin.read().splitlines(True)
+        print('%d lines in %s.' % (len(data), log_file_path))
+    if len(data) > lines_threshold:
+        with open(log_file_path, 'w') as f_write:
+            f_write.writelines(data[old_lines:])
+            print('Trimmed first %d lines.' % old_lines)
+
+
 def download(url: str, file_name: str) -> bool:
     try:
         # Set the absolute path to store the downloaded file.
@@ -318,7 +335,7 @@ if __name__ == "__main__":
                                 else:
                                     # The image has not been properly loaded.
                                     log('Warning: The file cannot be specified. (%d/%d)'
-                                        % (reload_count + 1, Constants.RELOAD_LIMIT))  # test
+                                        % (reload_count + 1, Constants.RELOAD_LIMIT))
                                     time.sleep(1)
                                     # Reload the page.
                                     source = requests.get(url_to_scan).text
@@ -385,5 +402,6 @@ if __name__ == "__main__":
                     somethings_wrong = True
                     loop_span = int(__get_elapsed_sec(first_trial_time) / 60)
                     log('Warning: Failed %d times in a row for %d minutes.' % (MAX_FAILURE, loop_span))
+                    trim_logs(Constants.LOG_PATH)
         except Exception as main_loop_exception:
             log('Error: %s\n[Traceback]\n%s' % (main_loop_exception, traceback.format_exc()))
