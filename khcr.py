@@ -106,7 +106,7 @@ def __get_elapsed_sec(start_time) -> float:
 
 def format_file_name(name: str):
     safe_char = '_'
-    char_limit = 80
+    char_limit = 128
     nice_name = name
     if len(nice_name) > char_limit:
         nice_name = name[-char_limit:]
@@ -162,8 +162,8 @@ def upload_image() -> str:
     # A Chrome web driver with headless option
     # service = Service(Path.DRIVER_PATH)
     options = webdriver.ChromeOptions()
+    options.add_argument('--proxy-server=socks5://127.0.0.1:9050')
     options.add_argument('headless')
-    # options.add_experimental_option("detach", True)
     browser = webdriver.Chrome(executable_path=Constants.DRIVER_PATH, options=options)
     wait = WebDriverWait(browser, timeout=5)
     try:  # Open the browser and upload the last image.
@@ -190,6 +190,7 @@ def upload_image() -> str:
             wait.until(expected_conditions.alert_is_present())
             browser.switch_to.alert.accept()
             wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'page-wrapper')))
+            print('Deleted the file on %s' % uploaded_url)
         except Exception as alert_exception:
             log('Error: Cannot delete the uploaded seed.(%s)' % alert_exception)
         return uploaded_url
