@@ -1,5 +1,9 @@
 import traceback
 
+import selenium.common.exceptions
+import urllib3.exceptions
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 from selenium import webdriver
 # from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -58,14 +62,14 @@ def trim_logs(log_file_path: str):
             print('Trimmed first %d lines.' % old_lines)
 
 
-def download(url: str, file_name: str) -> bool:
+def download(url: str, file_name: str, session: requests.Session) -> bool:
     try:
         # Set the absolute path to store the downloaded file.
         if not os.path.exists(Constants.DOWNLOAD_PATH):
             os.makedirs(Constants.DOWNLOAD_PATH)  # create folder if it does not exist
 
         # Set the download target.
-        r = requests.get(url, stream=True)
+        r = session.get(url, stream=True)
         file_path = os.path.join(Constants.DOWNLOAD_PATH, file_name)
         if r.ok:
             with open(file_path, 'wb') as f:
@@ -117,7 +121,7 @@ def format_file_name(name: str):
     return nice_name
 
 
-def extract_download_target(soup: BeautifulSoup) -> ():
+def extract_download_target(soup: BeautifulSoup, session: requests.Session) -> ():
     # If the image is still available.
     # Retrieve the image url
     target_tag = soup.find_all('link', {'rel': 'image_src'})
@@ -132,7 +136,7 @@ def extract_download_target(soup: BeautifulSoup) -> ():
             # Split at ' : ' rather than ':' to be more specific. The file name might contain ':'.
             name = dropdown_menus[0].string.split(' : ')[-1]
             formatted_name = format_file_name(remove_extension(name))
-            category, extension = requests.session().get(url).headers['Content-Type'].split('/')
+            category, extension = session.get(url).headers['Content-Type'].split('/')
             if category != 'image':
                 log('Error: %s is not an image.' % url)
 
@@ -158,11 +162,11 @@ def extract_download_target(soup: BeautifulSoup) -> ():
         return url, storing_name, size
 
 
-def upload_image() -> str:
+def upload_image(session: requests.Session) -> str:
     # A Chrome web driver with headless option
     # service = Service(Path.DRIVER_PATH)
     options = webdriver.ChromeOptions()
-    options.add_argument('--proxy-server=socks5://127.0.0.1:9050')
+    # options.add_argument('--proxy-server=socks5://127.0.0.1:9050')  # For tor session
     options.add_argument('headless')
     browser = webdriver.Chrome(executable_path=Constants.DRIVER_PATH, options=options)
     wait = WebDriverWait(browser, timeout=5)
@@ -182,7 +186,7 @@ def upload_image() -> str:
         wait.until(expected_conditions.presence_of_all_elements_located((By.CLASS_NAME, 'img-responsive')))
 
         # domain.com/img.jpg
-        image_url = extract_download_target(BeautifulSoup(browser.page_source, Constants.HTML_PARSER))[0]
+        image_url = extract_download_target(BeautifulSoup(browser.page_source, Constants.HTML_PARSER), session)[0]
         uploaded_url = remove_extension(image_url)  # domain.com/name
         log('%s uploaded on %s.' % (file_to_upload.split('/')[-1], uploaded_url))
         try:  # Delete the uploaded file.
@@ -194,6 +198,9 @@ def upload_image() -> str:
         except Exception as alert_exception:
             log('Error: Cannot delete the uploaded seed.(%s)' % alert_exception)
         return uploaded_url
+    except selenium.common.exceptions.WebDriverException as selenium_exception:
+        log('Error: Webdriver exception.(%s)' % selenium_exception)
+        time.sleep(Constants.LONG_SLEEP)
     except Exception as upload_exception:
         log('Error: Cannot upload seed.(%s)' % upload_exception)
     finally:
@@ -268,6 +275,16 @@ def __get_str_time() -> str:
     return str(datetime.datetime.now()).split('.')[0]
 
 
+def get_requests_session() -> requests.Session:
+    retry = Retry(total=10, backoff_factor=4)
+    adapter = HTTPAdapter(max_retries=retry)
+
+    http = requests.Session()
+    http.mount('http://', adapter)
+    http.mount('https://', adapter)
+    return http
+
+
 class Constants:
     HTML_PARSER = 'html.parser'
     MAX_SCANNING_URL_SPAN = 5
@@ -275,7 +292,8 @@ class Constants:
     SCANNING_TIME_SPAN = 2.5  # seconds
     MIN_PAUSE = 1.4
     MAX_PAUSE = 3.2
-    RELOAD_LIMIT = 8
+    IMG_RELOAD_LIMIT = 8
+    LONG_SLEEP = 1200
     IGNORED_FILENAME_PATTERNS, FILE_SIZE_THRESHOLD = build_tuple_of_tuples('IGNORE.pv')
     PROHIBITED_CHAR = (' ', '.', ',', ';', ':')
     ROOT_DOMAIN = read_from_file('ROOT_DOMAIN.pv')
@@ -284,9 +302,12 @@ class Constants:
 
 if __name__ == "__main__":
     while True:
+        # The request session
+        requests_session = get_requests_session()
+        print('Requests session created.')
         try:
             # Upload a file to get the start of a scanning sequence
-            occupied_url = upload_image()
+            occupied_url = upload_image(requests_session)
             url_to_scan = get_next_url(occupied_url)
 
             # If fails 1000 times in a row, something must have gone wrong.
@@ -298,7 +319,6 @@ if __name__ == "__main__":
 
             # Time span between successful downloads
             last_downloaded = datetime.datetime.now()
-
             while not somethings_wrong:  # Scan a couple of next urls
                 if failure_count < MAX_FAILURE:
                     scan_start_time = datetime.datetime.now()  # Set the timer.
@@ -310,8 +330,8 @@ if __name__ == "__main__":
                         scanning_url_span *= 3
                     for i in range(scanning_url_span):
                         # Retrieve the next url
-                        source = requests.get(url_to_scan).text
-                        target = extract_download_target(BeautifulSoup(source, Constants.HTML_PARSER))
+                        source = requests_session.get(url_to_scan).text
+                        target = extract_download_target(BeautifulSoup(source, Constants.HTML_PARSER), requests_session)
                         if target is not None:  # A file has been uploaded on the page. BREAK at the end of it.
                             occupied_url = url_to_scan  # Mark the url as occupied.
                             detected_in_span = True  # To reset the failure count.
@@ -332,18 +352,19 @@ if __name__ == "__main__":
 
                             # The page occupied(so the span should be shifted), inspect the occupying file.
                             # 0. Prepare a well-defined file target.
-                            for reload_count in range(Constants.RELOAD_LIMIT):
+                            for reload_count in range(Constants.IMG_RELOAD_LIMIT):
                                 if uploaded_size > 0 and uploaded_name:
                                     break
                                 else:
                                     # The image has not been properly loaded.
                                     log('Warning: The file cannot be specified. (%d/%d)'
-                                        % (reload_count + 1, Constants.RELOAD_LIMIT))
+                                        % (reload_count + 1, Constants.IMG_RELOAD_LIMIT))
                                     time.sleep(1)
                                     # Reload the page.
-                                    source = requests.get(url_to_scan).text
+                                    source = requests_session.get(url_to_scan).text
                                     file_url, local_name, uploaded_size = \
-                                        extract_download_target(BeautifulSoup(source, Constants.HTML_PARSER))
+                                        extract_download_target(BeautifulSoup(source, Constants.HTML_PARSER),
+                                                                requests_session)
                             else:  # No name, no size even after reload limit.
                                 log('Warning: Timeout reached.')
                                 # Even though, cannot conclude it is not worth downloading. Don't turn down, unless...
@@ -369,7 +390,7 @@ if __name__ == "__main__":
 
                             # After all, still worth downloading: start downloading.
                             if is_worth:
-                                dl_successful = download(file_url, local_name)
+                                dl_successful = download(file_url, local_name, requests_session)
                                 if dl_successful:
                                     # [ V ] in 2.3"  : filename.jpg
                                     log('%s in %.1f"\t: %s' % (checks, download_span, local_name))
@@ -406,5 +427,11 @@ if __name__ == "__main__":
                     loop_span = int(__get_elapsed_sec(first_trial_time) / 60)
                     log('Warning: Failed %d times in a row for %d minutes.' % (MAX_FAILURE, loop_span))
                     trim_logs(Constants.LOG_PATH)
+        except urllib3.exceptions.MaxRetryError:
+            log('Error: cannot make connection with max retries.')
+            time.sleep(Constants.LONG_SLEEP)
         except Exception as main_loop_exception:
-            log('Error: %s\n[Traceback]\n%s' % (main_loop_exception, traceback.format_exc()))
+            log('Error: %s\n[Traceback]\n%s' % (main_loop_exception, traceback.format_exc(),))
+        finally:
+            requests_session.close()
+            print("Requests session closed.")
