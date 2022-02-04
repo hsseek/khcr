@@ -179,7 +179,7 @@ def upload_image() -> str:
         else:
             file_to_upload = files_to_upload[0]
         browser.find_element(By.XPATH, '//*[@id="media_up_btn"]').send_keys(file_to_upload)
-        wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'img-responsive')))
+        wait.until(expected_conditions.presence_of_all_elements_located((By.CLASS_NAME, 'img-responsive')))
 
         # domain.com/img.jpg
         image_url = extract_download_target(BeautifulSoup(browser.page_source, Constants.HTML_PARSER))[0]
@@ -189,7 +189,7 @@ def upload_image() -> str:
             browser.find_element(By.XPATH, '/html/body/nav/div/div[2]/ul/li[4]/a').click()
             wait.until(expected_conditions.alert_is_present())
             browser.switch_to.alert.accept()
-            wait.until(expected_conditions.presence_of_element_located((By.CLASS_NAME, 'page-wrapper')))
+            wait.until(expected_conditions.presence_of_all_elements_located((By.CLASS_NAME, 'page-wrapper')))
             print('Deleted the file on %s' % uploaded_url)
         except Exception as alert_exception:
             log('Error: Cannot delete the uploaded seed.(%s)' % alert_exception)
@@ -306,6 +306,8 @@ if __name__ == "__main__":
 
                     url_to_scan = get_next_url(occupied_url)
                     scanning_url_span = random.randint(Constants.MIN_SCANNING_URL_SPAN, Constants.MAX_SCANNING_URL_SPAN)
+                    if failure_count < 1:
+                        scanning_url_span *= 3
                     for i in range(scanning_url_span):
                         # Retrieve the next url
                         source = requests.get(url_to_scan).text
